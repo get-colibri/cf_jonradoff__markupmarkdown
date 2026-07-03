@@ -8,6 +8,70 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [0.5.0] — 2026-07-03
+
+Standing reviewers, fuzzy anchor recovery, the admin console, and a
+three-layer overhaul of drift-banner correctness — all driven by
+same-day live feedback.
+
+### Added
+
+- **Standing reviewers ("CI for prose").** Subscribe a reviewer —
+  human or one of your agent tokens — to a doc's revision chain;
+  every new revision automatically mints a review request for them
+  (the revision's own author is never asked to review their own
+  work). One checkbox in the Request-review popover ("Also review
+  every future revision") upgrades a one-shot request to a standing
+  subscription. Standing reviewers render as ⟳ chips with one-click
+  removal. Fan-out hooks cover all five revision-creation paths
+  (manual edit, AI accept, apply-suggestion, MCP edit, MCP revise).
+- **Fuzzy anchor recovery.** Comments survive upstream rewrites:
+  when the anchored text changes (punctuation churn, a word swapped,
+  a sentence reflowed), a conservative trigram matcher re-anchors
+  the comment instead of orphaning it — requiring both a high
+  absolute similarity AND a clear margin over the runner-up passage,
+  so two similar paragraphs never steal each other's comments.
+  Recovered anchors show a small "≈" hint with the original
+  selection in the tooltip. Covers sync, merge, and revision
+  carry-forward through one shared fallback. Suggestions stay
+  strict: apply-suggestion still requires an exact anchor.
+- **Admin console at /admin.** Superuser-only usage dashboard:
+  headline counts (users, docs, public/private split, comments,
+  reviews, suggestions, tokens), a 30-day docs-created chart, recent
+  agent activity, and a recent-public-docs feed (private docs are
+  excluded in the query, not the UI). Gated by a
+  MARKUPMARKDOWN_ADMIN_LOGINS env allowlist, cookie-session only;
+  non-admins get 404.
+- **Named review chips.** The count-based summary badge ("1 changes
+  requested (incl. you)") is gone — the ReviewBar now names names:
+  "± You requested changes", "✓ Ali approved", with review notes as
+  tooltips.
+- **Awaiting-review visibility.** Pending review requests render as
+  "awaiting <name>" chips on the doc (cancelable), and the request
+  popover disables already-requested people — no more blind
+  re-requesting.
+
+### Fixed
+
+- **Drift banner correctness, three layers.** (1) The root's Ignore
+  state now mirrors onto child revisions, so a dismissed banner
+  stays dismissed chain-wide. (2) A child whose baseline already
+  matches upstream (created from a merge/sync) no longer inherits
+  the root's stale baseline. (3) Chain-level suppression: when the
+  chain's LATEST revision matches the current upstream SHA (e.g.
+  after a pushback, which re-baselines the pushed doc), older
+  revisions show the normal "v1 of N" breadcrumb instead of nagging
+  about an "upstream change" the chain itself produced.
+- **Blank-page crash on docs with zero reviews.** GET /reviews
+  returned JSON null for the empty case; the ReviewBar called
+  .length on it and unmounted the page. Both ends fixed.
+- **Served /SKILL.md was stale (since June 4).** The go:embed copy
+  had never been synced with the canonical file — agents got pre-P0
+  docs. Synced, plus a test that fails the build on drift.
+- **Home-page pop-in.** The four home lists fetch in parallel now,
+  and the indexes section ghost-holds its space with a skeleton
+  while loading.
+
 ## [0.4.0] — 2026-07-03
 
 Review requests: the coordination verb that makes reviewers summonable.

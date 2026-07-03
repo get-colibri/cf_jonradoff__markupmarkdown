@@ -241,6 +241,30 @@ Comments MAY carry a `suggestion: { replacement }` field ([suggestions.go](backe
 
 When agents want to propose a specific concrete edit, they should use the `add_suggestion` MCP tool (which is `add_comment` + suggestion stamping in one atomic call) rather than free-form prose.
 
+### 18. Drift banners respect the whole chain
+
+Three invariants in getDocument's drift handling ([documents.go](backend/internal/api/documents.go)), each earned by a live false-positive:
+
+1. Child revisions mirror the ROOT's drift state (including `source_drift_ignored_sha` — an Ignore on the root suppresses the banner chain-wide).
+2. A child whose own `source_sha` equals the root's `source_latest_sha` was created FROM that upstream — no overlay, no banner.
+3. Chain-level suppression: if the chain's LATEST descendant's `source_sha` matches the current upstream SHA (pushback re-baselines the pushed doc — see `UpdateDocumentSourceSHA` in [pushback.go](backend/internal/api/pushback.go)), NO doc in the chain shows a drift banner. An "upstream change" the chain itself produced is not drift.
+
+If you add a new revision-creating or pushing path, check all three still hold.
+
+### 19. Review requests and standing reviewers
+
+A `ReviewRequest` targets a human (`reviewer_user_id`) XOR an agent token (`reviewer_token_id`) — the token must belong to the requester (you can't summon someone else's bot). Fulfillment is implicit: `setReview` / MCP `SetReviewState` complete any pending request the reviewer holds on the doc — never add an explicit "submit review" step. Humans are notified via the bell; agents poll `list_review_requests`. Deterministic `_id`s (`docID:reviewerKey`) make re-requesting an upsert, not a duplicate.
+
+`ReviewSubscription` (standing reviewer) anchors to the chain ROOT. Every child-revision creation path must call `a.fanOutRevisionEvents(newDoc, authorUserID, authorTokenID, authorName)` ([review_subscriptions.go](backend/internal/api/review_subscriptions.go)) — currently five call sites: manual edit, AI accept, apply-suggestion, MCP edit_document, MCP revise accept. The hook skips the revision's own author. If you add a sixth way to create a revision, wire the hook.
+
+### 20. Admin surface is env-gated and cookie-only
+
+`/api/admin/*` handlers gate through `requireAdmin` ([admin.go](backend/internal/api/admin.go)): cookie session + login present in `MARKUPMARKDOWN_ADMIN_LOGINS` (comma-separated env). Bearer tokens are rejected with 403 even for the admin's own tokens; non-admins get **404** so the route doesn't confirm its existence. The recent-docs feed excludes private docs IN THE QUERY — never filter privacy in the UI layer. `auth/me`'s `isAdmin` flag is cosmetic (shows the menu link); every handler re-checks.
+
+### 21. The embedded skill.md must match the canonical one
+
+`/SKILL.md` is served from a go:embed of `backend/internal/api/skill.md` — a COPY of the canonical `skills/markupmarkdown/SKILL.md` (go:embed can't reach outside the package). After editing the canonical file, run `cp skills/markupmarkdown/SKILL.md backend/internal/api/skill.md`. `TestEmbeddedSkillMatchesCanonical` fails the build when they drift — that test exists because the copy silently went stale for a month and agents were reading pre-P0 docs.
+
 ## Operational notes
 
 These are properties of the running system that won't show up in code review but are worth knowing before scaling or debugging:
