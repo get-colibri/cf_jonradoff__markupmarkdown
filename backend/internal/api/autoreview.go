@@ -77,7 +77,11 @@ func (a *API) enqueueAutoReview(requestID, tokenID string) {
 }
 
 func (a *API) sweepAutoReviews() {
-	ctx, cancel := context.WithTimeout(contextDetached(), 30*time.Second)
+	// context.Background, NOT contextDetached — the latter carries a
+	// baked-in 5s timeout meant for quick async lookups, and a parent
+	// deadline always wins over a longer child one. (Cost of learning
+	// this live: one drill review that died at exactly 5s.)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	pending, err := a.store.ListPendingAutoReviewCandidates(ctx)
 	if err != nil {
@@ -94,7 +98,8 @@ func (a *API) sweepAutoReviews() {
 // conditions (rate limit) leave the claim unstamped so the sweep
 // retries, and hard failures burn the daily claim so we never loop.
 func (a *API) processAutoReview(requestID string) {
-	ctx, cancel := context.WithTimeout(contextDetached(), 8*time.Minute)
+	// Background, not contextDetached — see sweepAutoReviews.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 
 	rr, err := a.store.GetReviewRequest(ctx, requestID)
