@@ -77,3 +77,49 @@ func TestAdminRecentPublicDocs_ExcludesPrivate(t *testing.T) {
 		t.Errorf("PRIVATE doc leaked into the admin feed")
 	}
 }
+
+func TestAdminRecentUsers_GuardAndPrivacy(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	admin := testutil.NewTestUser(t, st)
+	other := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, admin.ID)
+
+	// Non-admin → 404.
+	status, _ := doJSON(t, srv, "GET", "/api/admin/recent-users", nil, withCookie(sess))
+	if status != 404 {
+		t.Errorf("non-admin status=%d want 404", status)
+	}
+	t.Setenv("MARKUPMARKDOWN_ADMIN_LOGINS", admin.Login)
+
+	// Other user has one public + one private doc.
+	pub := testutil.NewTestDocument(t, st, other.ID, "public doc")
+	priv := testutil.NewTestDocument(t, st, other.ID, "private secret doc title")
+	if _, err := st.Documents().UpdateOne(context.Background(),
+		bson.M{"_id": priv.ID}, bson.M{"$set": bson.M{"private": true}}); err != nil {
+		t.Fatalf("mark private: %v", err)
+	}
+
+	// Users list: no emails anywhere in the payload.
+	status, body := doJSON(t, srv, "GET", "/api/admin/recent-users", nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if strings.Contains(string(body), "@example.com") || strings.Contains(string(body), `"email"`) {
+		t.Errorf("user emails leaked into admin payload: %s", body)
+	}
+
+	// Drill-down: public doc listed, private TITLE absent, count present.
+	status, body = doJSON(t, srv, "GET", "/api/admin/users/"+other.ID+"/docs", nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("drill status=%d body=%s", status, body)
+	}
+	if !strings.Contains(string(body), pub.ID) {
+		t.Errorf("public doc missing from drill-down")
+	}
+	if strings.Contains(string(body), "private secret doc title") {
+		t.Errorf("PRIVATE doc title leaked: %s", body)
+	}
+	if !strings.Contains(string(body), `"privateCount":1`) {
+		t.Errorf("expected privateCount=1, got %s", body)
+	}
+}

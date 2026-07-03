@@ -18,6 +18,7 @@ import type {
   PushbackResult,
   AdminOverview,
   AdminRecentDoc,
+  AdminUserRow,
   Review,
   ReviewRequest,
   ReviewState,
@@ -577,6 +578,13 @@ export const api = {
   adminOverview: () => req<AdminOverview>("/api/admin/overview"),
   adminRecentPublicDocs: (limit = 50) =>
     req<AdminRecentDoc[]>(`/api/admin/recent-public-docs?limit=${limit}`),
+  adminRecentUsers: () => req<AdminUserRow[]>("/api/admin/recent-users"),
+  /** Drill-down: a user's PUBLIC docs + a count of private ones
+   * (titles of private docs never leave the backend). */
+  adminUserDocs: (userId: string) =>
+    req<{ docs: AdminRecentDoc[]; privateCount: number }>(
+      `/api/admin/users/${userId}/docs`
+    ),
 
   // --- P0-2: Suggested changes ---
   /** Apply the suggestion attached to a comment. Creates a manual

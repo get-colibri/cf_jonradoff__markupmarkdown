@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
+
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
@@ -268,4 +270,202 @@ func (a *API) adminRecentPublicDocs(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+type adminUserRow struct {
+	ID           string     `json:"id"`
+	Login        string     `json:"login"`
+	Name         string     `json:"name,omitempty"`
+	AvatarURL    string     `json:"avatarUrl,omitempty"`
+	JoinedAt     time.Time  `json:"joinedAt"`
+	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
+	DocsPublic   int64      `json:"docsPublic"`
+	DocsPrivate  int64      `json:"docsPrivate"`
+	Comments     int64      `json:"comments"`
+	AgentTokens  int64      `json:"agentTokens"`
+}
+
+// adminRecentUsers is GET /api/admin/recent-users — users ordered by
+// most recent activity (their newest document view), with public
+// per-user aggregates. Deliberately excludes anything private: no
+// email, no key status, no token names, and private docs appear only
+// as a COUNT (titles stay hidden even from the console).
+func (a *API) adminRecentUsers(w http.ResponseWriter, r *http.Request) {
+	if a.requireAdmin(w, r) == nil {
+		return
+	}
+	ctx := r.Context()
+
+	// Last activity per user from the view markers.
+	lastActive := map[string]time.Time{}
+	if cur, err := a.store.DocumentViews().Aggregate(ctx, []bson.M{
+		{"$group": bson.M{"_id": "$user_id", "last": bson.M{"$max": "$last_viewed_at"}}},
+	}); err == nil {
+		var rows []struct {
+			ID   string    `bson:"_id"`
+			Last time.Time `bson:"last"`
+		}
+		if err := cur.All(ctx, &rows); err == nil {
+			for _, row := range rows {
+				lastActive[row.ID] = row.Last
+			}
+		}
+	}
+	// Docs created per user, split public/private.
+	type docAgg struct {
+		Pub, Priv int64
+	}
+	docCounts := map[string]*docAgg{}
+	if cur, err := a.store.Documents().Aggregate(ctx, []bson.M{
+		{"$match": bson.M{"deleted_at": bson.M{"$exists": false}, "created_by_id": bson.M{"$ne": ""}}},
+		{"$group": bson.M{
+			"_id":   bson.M{"u": "$created_by_id", "p": "$private"},
+			"count": bson.M{"$sum": 1},
+		}},
+	}); err == nil {
+		var rows []struct {
+			ID struct {
+				U string `bson:"u"`
+				P bool   `bson:"p"`
+			} `bson:"_id"`
+			Count int64 `bson:"count"`
+		}
+		if err := cur.All(ctx, &rows); err == nil {
+			for _, row := range rows {
+				agg := docCounts[row.ID.U]
+				if agg == nil {
+					agg = &docAgg{}
+					docCounts[row.ID.U] = agg
+				}
+				if row.ID.P {
+					agg.Priv += row.Count
+				} else {
+					agg.Pub += row.Count
+				}
+			}
+		}
+	}
+	// Comments authored per user.
+	commentCounts := map[string]int64{}
+	if cur, err := a.store.Comments().Aggregate(ctx, []bson.M{
+		{"$match": bson.M{"author_id": bson.M{"$ne": ""}}},
+		{"$group": bson.M{"_id": "$author_id", "count": bson.M{"$sum": 1}}},
+	}); err == nil {
+		var rows []struct {
+			ID    string `bson:"_id"`
+			Count int64  `bson:"count"`
+		}
+		if err := cur.All(ctx, &rows); err == nil {
+			for _, row := range rows {
+				commentCounts[row.ID] = row.Count
+			}
+		}
+	}
+	// Active tokens per user.
+	tokenCounts := map[string]int64{}
+	if cur, err := a.store.APITokens().Aggregate(ctx, []bson.M{
+		{"$match": bson.M{"revoked_at": bson.M{"$exists": false}}},
+		{"$group": bson.M{"_id": "$user_id", "count": bson.M{"$sum": 1}}},
+	}); err == nil {
+		var rows []struct {
+			ID    string `bson:"_id"`
+			Count int64  `bson:"count"`
+		}
+		if err := cur.All(ctx, &rows); err == nil {
+			for _, row := range rows {
+				tokenCounts[row.ID] = row.Count
+			}
+		}
+	}
+
+	cur, err := a.store.Users().Find(ctx, bson.M{})
+	if err != nil {
+		internalError(w, "admin.users", err)
+		return
+	}
+	var users []models.User
+	if err := cur.All(ctx, &users); err != nil {
+		internalError(w, "admin.users.decode", err)
+		return
+	}
+	out := make([]adminUserRow, 0, len(users))
+	for _, u := range users {
+		row := adminUserRow{
+			ID:          u.ID,
+			Login:       u.Login,
+			Name:        u.Name,
+			AvatarURL:   u.AvatarURL,
+			JoinedAt:    u.CreatedAt,
+			Comments:    commentCounts[u.ID],
+			AgentTokens: tokenCounts[u.ID],
+		}
+		if agg := docCounts[u.ID]; agg != nil {
+			row.DocsPublic, row.DocsPrivate = agg.Pub, agg.Priv
+		}
+		if t, ok := lastActive[u.ID]; ok {
+			tt := t
+			row.LastActiveAt = &tt
+		}
+		out = append(out, row)
+	}
+	// Most recently active first; never-active users sink to the
+	// bottom ordered by join date.
+	sortCandidates(out, func(i, j int) bool {
+		a, b := out[i].LastActiveAt, out[j].LastActiveAt
+		if a != nil && b != nil {
+			return a.After(*b)
+		}
+		if a != nil {
+			return true
+		}
+		if b != nil {
+			return false
+		}
+		return out[i].JoinedAt.After(out[j].JoinedAt)
+	})
+	if len(out) > 100 {
+		out = out[:100]
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// adminUserDocs is GET /api/admin/users/{id}/docs — the drill-down.
+// PUBLIC docs only (query-enforced, same posture as the recent feed);
+// private material surfaces only as a count.
+func (a *API) adminUserDocs(w http.ResponseWriter, r *http.Request) {
+	if a.requireAdmin(w, r) == nil {
+		return
+	}
+	userID := mux.Vars(r)["id"]
+	ctx := r.Context()
+	cur, err := a.store.Documents().Find(ctx,
+		bson.M{"created_by_id": userID, "deleted_at": bson.M{"$exists": false}, "private": false},
+		options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}}).SetLimit(100))
+	if err != nil {
+		internalError(w, "admin.user_docs", err)
+		return
+	}
+	var docs []models.Document
+	if err := cur.All(ctx, &docs); err != nil {
+		internalError(w, "admin.user_docs.decode", err)
+		return
+	}
+	privateCount, _ := a.store.Documents().CountDocuments(ctx,
+		bson.M{"created_by_id": userID, "deleted_at": bson.M{"$exists": false}, "private": true})
+
+	out := make([]adminRecentDoc, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, adminRecentDoc{
+			ID:         d.ID,
+			Title:      d.Title,
+			SourceURL:  d.SourceURL,
+			IsRevision: d.ParentID != "",
+			CreatedAt:  d.CreatedAt,
+			UpdatedAt:  d.UpdatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"docs":         out,
+		"privateCount": privateCount,
+	})
 }

@@ -83,6 +83,19 @@ export interface AdminOverview {
   docsPerDay: AdminDayCount[];
   recentAgentActions: AdminAgentAction[];
 }
+export interface AdminUserRow {
+  id: string;
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+  joinedAt: string;
+  lastActiveAt?: string;
+  docsPublic: number;
+  docsPrivate: number;
+  comments: number;
+  agentTokens: number;
+}
+
 export interface AdminRecentDoc {
   id: string;
   title: string;

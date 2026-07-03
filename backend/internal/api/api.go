@@ -137,6 +137,8 @@ func (a *API) Register(r *mux.Router) {
 	// allowlist of GitHub logins), cookie-session only — see admin.go.
 	r.HandleFunc("/api/admin/overview", a.adminOverviewHandler).Methods("GET")
 	r.HandleFunc("/api/admin/recent-public-docs", a.adminRecentPublicDocs).Methods("GET")
+	r.HandleFunc("/api/admin/recent-users", a.adminRecentUsers).Methods("GET")
+	r.HandleFunc("/api/admin/users/{id}/docs", a.adminUserDocs).Methods("GET")
 
 	// Agent-proposed revision acceptance (P0-3). Human-only endpoint —
 	// pushback refuses to ship an agent-authored revision until it's

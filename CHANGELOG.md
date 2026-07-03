@@ -20,6 +20,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   standing reviewers this completes CI-for-prose: save a revision,
   get a real review back in under a minute, no external agent or cron
   required.
+- **Admin: recently active users with drill-down.** Users ordered by
+  most recent activity, with join date, docs (public/private counts),
+  comments, and token counts. Clicking a row expands their PUBLIC
+  docs inline; private docs surface only as a count — titles never
+  leave the backend, and user emails are excluded from the payload
+  entirely.
 - **Admin: sortable public-docs table + Modified column.** Click any
   column header to sort (click again to reverse); defaults to
   last-modified, newest first.

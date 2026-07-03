@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, APIError } from "../api";
 import { useAuth } from "../auth";
 import ErrorBlock from "../components/ErrorBlock";
-import type { AdminOverview, AdminRecentDoc } from "../types";
+import type { AdminOverview, AdminRecentDoc, AdminUserRow } from "../types";
 import TimeAgo from "../components/TimeAgo";
 
 /** Superuser console. One page, one load: headline counts, a 30-day
@@ -13,6 +13,7 @@ export default function AdminPage() {
   const { user, isAdmin, loading: authLoading } = useAuth();
   const [ov, setOv] = useState<AdminOverview | null>(null);
   const [recent, setRecent] = useState<AdminRecentDoc[] | null>(null);
+  const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [error, setError] = useState<APIError | null>(null);
   // Sortable public-docs table. Defaults to last-modified, newest
   // first — "what changed recently" is the question the feed answers.
@@ -46,13 +47,15 @@ export default function AdminPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [o, r] = await Promise.all([
+        const [o, r, u] = await Promise.all([
           api.adminOverview(),
           api.adminRecentPublicDocs(50),
+          api.adminRecentUsers().catch(() => [] as AdminUserRow[]),
         ]);
         if (cancelled) return;
         setOv(o);
         setRecent(r);
+        setUsers(u);
       } catch (err) {
         if (!cancelled && err instanceof APIError) setError(err);
       }
@@ -130,6 +133,33 @@ export default function AdminPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Recently active users. Click a row to drill into their
+              public docs — private docs surface only as a count. */}
+          {users.length > 0 && (
+            <>
+              <h2 className="text-sm font-semibold mb-2">Recently active users</h2>
+              <div className="bg-card border border-rule rounded-lg overflow-x-auto mb-8">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-muted border-b border-rule">
+                      <th className="px-3 py-2 font-medium">User</th>
+                      <th className="px-3 py-2 font-medium">Last active</th>
+                      <th className="px-3 py-2 font-medium">Joined</th>
+                      <th className="px-3 py-2 font-medium">Docs (pub/priv)</th>
+                      <th className="px-3 py-2 font-medium">Comments</th>
+                      <th className="px-3 py-2 font-medium">Tokens</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-rule">
+                    {users.map((u) => (
+                      <UserRow key={u.id} user={u} />
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </>
           )}
@@ -242,5 +272,96 @@ function SortableTh({
         </span>
       </button>
     </th>
+  );
+}
+
+/** One user row; clicking expands an inline drill-down of their
+ * PUBLIC docs (fetched lazily). Private docs show only as a count —
+ * their titles never leave the backend. */
+function UserRow({ user }: { user: AdminUserRow }) {
+  const [open, setOpen] = useState(false);
+  const [docs, setDocs] = useState<AdminRecentDoc[] | null>(null);
+  const [privateCount, setPrivateCount] = useState(0);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && docs === null) {
+      try {
+        const res = await api.adminUserDocs(user.id);
+        setDocs(res.docs);
+        setPrivateCount(res.privateCount);
+      } catch {
+        setDocs([]);
+      }
+    }
+  }
+
+  return (
+    <>
+      <tr
+        onClick={toggle}
+        className="hover:bg-soft cursor-pointer"
+        title={open ? "Collapse" : "Show this user's public docs"}
+      >
+        <td className="px-3 py-2">
+          <span className="inline-flex items-center gap-2">
+            <span className={"text-[9px] text-faint transition " + (open ? "rotate-90" : "")}>▶</span>
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+            ) : (
+              <span className="w-5 h-5 rounded-full bg-soft" />
+            )}
+            <span className="text-ink font-medium">{user.name || user.login}</span>
+            <span className="text-faint">@{user.login}</span>
+          </span>
+        </td>
+        <td className="px-3 py-2 text-muted whitespace-nowrap">
+          {user.lastActiveAt ? <TimeAgo iso={user.lastActiveAt} /> : "—"}
+        </td>
+        <td className="px-3 py-2 text-muted whitespace-nowrap">
+          <TimeAgo iso={user.joinedAt} />
+        </td>
+        <td className="px-3 py-2 text-muted">
+          {user.docsPublic} / {user.docsPrivate}
+        </td>
+        <td className="px-3 py-2 text-muted">{user.comments || ""}</td>
+        <td className="px-3 py-2 text-muted">{user.agentTokens || ""}</td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={6} className="px-3 pb-3 pt-0 bg-soft/40">
+            {docs === null && <div className="text-muted py-2">Loading…</div>}
+            {docs !== null && (
+              <div className="pl-6">
+                {docs.length === 0 && (
+                  <div className="text-muted py-2">No public docs.</div>
+                )}
+                {docs.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-2 py-1 border-b border-rule/50 last:border-0">
+                    <span>
+                      <Link to={`/d/${d.id}`} className="text-accent hover:underline">
+                        {d.title}
+                      </Link>
+                      {d.isRevision && (
+                        <span className="ml-1.5 text-[10px] text-faint uppercase">rev</span>
+                      )}
+                    </span>
+                    <span className="text-muted whitespace-nowrap">
+                      modified <TimeAgo iso={d.updatedAt} />
+                    </span>
+                  </div>
+                ))}
+                {privateCount > 0 && (
+                  <div className="text-faint pt-1.5 italic">
+                    + {privateCount} private doc{privateCount === 1 ? "" : "s"} (titles not shown)
+                  </div>
+                )}
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
