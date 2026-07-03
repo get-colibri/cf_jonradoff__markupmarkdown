@@ -198,6 +198,19 @@ export default function CommentCard({
       {!hideQuotedText && comment.anchor.exact && (
         <div className="text-xs text-muted italic mb-2 line-clamp-2 border-l-2 border-rule pl-2">
           “{comment.anchor.exact}”
+          {comment.fuzzyReanchored && (
+            <span
+              className="not-italic ml-1 text-faint cursor-help"
+              title={
+                "Re-anchored approximately after the text changed." +
+                (comment.originalExact
+                  ? ` Originally: “${comment.originalExact}”`
+                  : "")
+              }
+            >
+              ≈
+            </span>
+          )}
         </div>
       )}
 

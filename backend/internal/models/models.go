@@ -492,6 +492,12 @@ type Comment struct {
 	// card's "previously highlighted" blockquote so reviewers know what
 	// the comment was about.
 	OriginalExact string `bson:"original_exact,omitempty" json:"originalExact,omitempty"`
+	// FuzzyReanchored marks a comment whose anchor was recovered by
+	// the approximate matcher after an upstream rewrite (Phase 3).
+	// Anchor.Exact holds the NEW text; OriginalExact holds what the
+	// commenter originally selected. The UI renders a small "≈" hint.
+	// Cleared if a later re-anchor finds the exact text again.
+	FuzzyReanchored bool `bson:"fuzzy_reanchored,omitempty" json:"fuzzyReanchored,omitempty"`
 	// Suggestion is an optional structured edit proposal — the comment
 	// says "replace the anchored text with THIS." The frontend renders
 	// a one-click Apply button when present (empirically the highest-

@@ -419,6 +419,13 @@ func buildCarriedComment(src models.Comment, child *models.Document, now time.Ti
 		out.Anchor.Start = 0
 		out.Anchor.End = 0
 		out.Anchor.Exact = res.Exact
+		if res.Fuzzy {
+			out.FuzzyReanchored = true
+			out.OriginalExact = res.OriginalExact
+		} else {
+			out.FuzzyReanchored = false
+			out.OriginalExact = ""
+		}
 	case reanchorOrphan:
 		out.Orphan = true
 		out.OriginalExact = res.OriginalExact

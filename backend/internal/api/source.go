@@ -462,6 +462,21 @@ func reanchorComments(comments []models.Comment, newContent string) []reanchorRe
 			out[i] = reanchorResult{ID: c.ID, Status: reanchorClean, Exact: exact}
 			continue
 		}
+		// Fuzzy fallback (Phase 3): the exact text is gone, but a
+		// lightly-rewritten version may still be there. High-confidence
+		// unambiguous matches re-anchor with Fuzzy=true (the UI shows a
+		// "≈" hint and OriginalExact keeps the provenance); everything
+		// else orphans as before.
+		if match, ok := fuzzyFindAnchor(plain, exact); ok {
+			out[i] = reanchorResult{
+				ID:            c.ID,
+				Status:        reanchorClean,
+				Exact:         match,
+				OriginalExact: pickOriginalExact(c, exact),
+				Fuzzy:         true,
+			}
+			continue
+		}
 		out[i] = reanchorResult{
 			ID:            c.ID,
 			Status:        reanchorOrphan,
@@ -491,6 +506,12 @@ type reanchorResult struct {
 	Status        reanchorStatus
 	Exact         string
 	OriginalExact string
+	// Fuzzy marks a reanchorClean result that came from the
+	// approximate matcher rather than an exact substring hit. Exact
+	// holds the NEW (rewritten) text; OriginalExact preserves what the
+	// commenter originally selected. Consumers persist both plus a
+	// fuzzy_reanchored flag so the UI can hint "≈ re-anchored".
+	Fuzzy bool
 }
 
 // isDocLevel returns true if the anchor represents a document-level
@@ -606,13 +627,17 @@ func (a *API) syncDocumentSource(w http.ResponseWriter, r *http.Request) {
 				"anchor.exact": res.Exact,
 				"updated_at":   time.Now().UTC(),
 			}
-			update := bson.M{"$set": set}
-			if c.Orphan {
-				update["$unset"] = bson.M{
-					"orphan":         "",
-					"original_exact": "",
-				}
+			unset := bson.M{"orphan": ""}
+			if res.Fuzzy {
+				// Approximate match: keep the original selection for
+				// provenance + flag for the "≈" UI hint.
+				set["fuzzy_reanchored"] = true
+				set["original_exact"] = res.OriginalExact
+			} else {
+				unset["original_exact"] = ""
+				unset["fuzzy_reanchored"] = ""
 			}
+			update := bson.M{"$set": set, "$unset": unset}
 			if _, err := a.store.Comments().UpdateOne(r.Context(),
 				bson.M{"_id": c.ID}, update); err != nil {
 				internalError(w, "store.update_anchor", err)
@@ -919,16 +944,22 @@ func (a *API) mergeAcceptSource(w http.ResponseWriter, r *http.Request) {
 		c := &comments[i]
 		switch res.Status {
 		case reanchorClean:
-			update := bson.M{"$set": bson.M{
+			set := bson.M{
 				"anchor.start": 0,
 				"anchor.end":   0,
 				"anchor.exact": res.Exact,
 				"updated_at":   now,
-			}}
-			if c.Orphan {
-				update["$unset"] = bson.M{"orphan": "", "original_exact": ""}
 			}
-			if _, err := a.store.Comments().UpdateOne(r.Context(), bson.M{"_id": c.ID}, update); err != nil {
+			unset := bson.M{"orphan": ""}
+			if res.Fuzzy {
+				set["fuzzy_reanchored"] = true
+				set["original_exact"] = res.OriginalExact
+			} else {
+				unset["original_exact"] = ""
+				unset["fuzzy_reanchored"] = ""
+			}
+			if _, err := a.store.Comments().UpdateOne(r.Context(), bson.M{"_id": c.ID},
+				bson.M{"$set": set, "$unset": unset}); err != nil {
 				internalError(w, "store.update_anchor", err)
 				return
 			}

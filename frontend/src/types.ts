@@ -443,6 +443,11 @@ export interface Comment {
   /** The quoted text from before the source change — what the
    * comment was originally about. Shown in the orphan card. */
   originalExact?: string;
+  /** True when the anchor was recovered by the approximate matcher
+   * after an upstream rewrite (Phase 3). anchor.exact holds the NEW
+   * text; originalExact holds the original selection. Renders a
+   * small "≈" hint on the quoted block. */
+  fuzzyReanchored?: boolean;
   /** Structured edit proposal on this anchored comment (P0-2). When
    * present, the comment card renders a one-click Apply button.
    * appliedAt/etc. get stamped when a reviewer applies it. */
