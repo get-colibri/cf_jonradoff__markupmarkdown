@@ -590,9 +590,9 @@ func (a *API) getDocument(w http.ResponseWriter, r *http.Request) {
 	// already been reconciled. Older revisions in the chain should
 	// show the ordinary "you're on v1 of N" breadcrumb — not a merge
 	// nag about content a newer sibling already carries.
-	if resp.Document.SourceLatestSHA != "" {
+	if resp.SourceLatestSHA != "" {
 		if leaf, _ := a.store.LatestDescendant(r.Context(), doc.ID); leaf != nil &&
-			leaf.ID != doc.ID && leaf.SourceSHA == resp.Document.SourceLatestSHA {
+			leaf.ID != doc.ID && leaf.SourceSHA == resp.SourceLatestSHA {
 			cleared := *resp.Document
 			cleared.SourceLatestSHA = ""
 			cleared.SourceDriftedAt = nil
