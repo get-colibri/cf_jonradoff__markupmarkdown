@@ -43,6 +43,16 @@ export interface ReviewRequest {
   completedAt?: string;
 }
 
+/** A standing reviewer on a revision chain — every new revision
+ * automatically mints a ReviewRequest for them. */
+export interface ReviewSubscription {
+  id: string;
+  rootDocumentId: string;
+  reviewerName: string;
+  reviewerTokenId?: string;
+  createdAt: string;
+}
+
 export interface NotificationItem {
   id: string;
   kind: "mention" | "reply" | "review_request" | "review_state";

@@ -332,6 +332,13 @@ func (a *API) acceptRevision(w http.ResponseWriter, r *http.Request) {
 		a.hub.Broadcast(doc.ID, "comments-updated")
 	}
 
+	// Summon the chain's standing reviewers onto the new revision.
+	authorTok := ""
+	if info, ok := tokenInfoFromRequest(r); ok {
+		authorTok = info.TokenID
+	}
+	a.fanOutRevisionEvents(doc, user.ID, authorTok, authorName)
+
 	writeJSON(w, http.StatusCreated, doc)
 }
 

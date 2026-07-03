@@ -1,7 +1,7 @@
 package api
 
 // The served /SKILL.md is a go:embed of skill.md in THIS package —
-// go:embed can't reach outside the package dir, so the canonical
+// the embed directive cannot reach outside the package dir, so the
 // skills/markupmarkdown/SKILL.md is copied here. This test fails the
 // build check whenever the two drift, which is what keeps rule #12
 // ("SKILL.md is the canonical agent guide") true in practice.

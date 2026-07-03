@@ -140,6 +140,13 @@ func (a *API) applySuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 	a.hub.Broadcast(doc.ID, "doc-updated")
 
+		// Summon the chain's standing reviewers onto the new revision.
+	authorTok := ""
+	if info, ok := tokenInfoFromRequest(r); ok {
+		authorTok = info.TokenID
+	}
+	a.fanOutRevisionEvents(child, user.ID, authorTok, authorName)
+
 	writeJSON(w, http.StatusCreated, child)
 }
 

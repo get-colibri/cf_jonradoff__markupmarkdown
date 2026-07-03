@@ -52,7 +52,7 @@ Tokens can be scoped per-agent and revoked any time. Never embed the token in a 
 | `get_document` | Full markdown content + metadata. Errors with "access denied" for private docs the token's user can't read. |
 | `list_comments` | Comments on a doc. Filter: `open` (default), `resolved`, `all`. Set `render_html: true` to get sanitized HTML rendering of bodies alongside the raw markdown. |
 | `list_revisions` | Returns the full revision chain (root → leaf) for any doc with each node's `revisionIndex`, `model`, `generatedBy`, `actorKind`, and timestamps. One call replaces walking `parent` / `children` from `get_document`. |
-| `list_review_requests` | **Check this at the start of a session.** Returns the pending review requests targeting your token — docs a human has asked you to review. To fulfill one: read the doc, leave feedback (`add_comment` / `add_suggestion`), then `set_review_state`. Setting a state auto-completes the request; there is no separate "done" call. |
+| `list_review_requests` | **Check this at the start of a session.** Returns the pending review requests targeting your token — docs a human has asked you to review. Requests appear two ways: a human clicked "Request review" on a doc, or your token is a **standing reviewer** on a doc's revision chain and a new revision just landed (you'll be re-summoned on every revision until a human removes the subscription). To fulfill one: read the doc, leave feedback (`add_comment` / `add_suggestion`), then `set_review_state`. Setting a state auto-completes the request; there is no separate "done" call. |
 
 **Commenting** (`write` scope):
 

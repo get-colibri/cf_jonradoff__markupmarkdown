@@ -144,6 +144,27 @@ func (a *API) listMyReviewRequests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// listDocReviewRequests is GET /api/documents/:id/review-requests —
+// the pending requests on THIS doc, visible to anyone with doc
+// access. This is what stops a second person (or the same person,
+// later) from re-requesting a review that's already out.
+func (a *API) listDocReviewRequests(w http.ResponseWriter, r *http.Request) {
+	docID := mux.Vars(r)["id"]
+	if _, accErr := a.checkDocAccess(r, docID); accErr != nil {
+		a.writeAccessError(w, r, accErr)
+		return
+	}
+	out, err := a.store.ListPendingReviewRequestsForDoc(r.Context(), docID)
+	if err != nil {
+		internalError(w, "store.list_doc_review_requests", err)
+		return
+	}
+	if out == nil {
+		out = []models.ReviewRequest{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // dismissReviewRequest is POST /api/review-requests/:id/dismiss. The
 // targeted reviewer or the original requester can dismiss.
 func (a *API) dismissReviewRequest(w http.ResponseWriter, r *http.Request) {

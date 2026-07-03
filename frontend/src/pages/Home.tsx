@@ -56,39 +56,35 @@ export default function HomePage() {
   }
 
   async function refresh() {
-    try {
-      const list = await api.listDocuments();
-      setDocs(list);
-    } catch (err) {
-      // 401 (sign-in required) is expected when not logged in — don't
-      // surface it as a top-of-page error. The empty-state UI handles it.
-      if (err instanceof APIError && err.kind === "sign_in_required") {
-        setDocs([]);
-        return;
+    // All four lists fetch in PARALLEL — serial awaits made the
+    // indexes section pop in visibly after the docs list, shifting
+    // the layout. Each list settles independently so one failure
+    // doesn't blank the others.
+    const docsP = api.listDocuments().then(
+      (list) => setDocs(list),
+      (err: unknown) => {
+        // 401 (sign-in required) is expected when not logged in —
+        // don't surface it as a top-of-page error.
+        if (err instanceof APIError && err.kind === "sign_in_required") {
+          setDocs([]);
+          return;
+        }
+        setErrFrom(err);
       }
-      setErrFrom(err);
-    }
-    // Fetch trash lazily — only signed-in users have one.
-    try {
-      const t = await api.listTrash();
-      setTrash(t);
-    } catch {
-      setTrash([]);
-    }
-    // Fetch the user's markdown-indexes — same gating as trash.
-    try {
-      const idxs = await api.listMyIndexes();
-      setIndexes(idxs);
-    } catch {
-      setIndexes([]);
-    }
-    // Pending review requests targeting this user.
-    try {
-      const rq = await api.listMyReviewRequests();
-      setReviewQueue(rq);
-    } catch {
-      setReviewQueue([]);
-    }
+    );
+    const trashP = api.listTrash().then(
+      (t) => setTrash(t),
+      () => setTrash([])
+    );
+    const idxP = api.listMyIndexes().then(
+      (idxs) => setIndexes(idxs),
+      () => setIndexes([])
+    );
+    const rqP = api.listMyReviewRequests().then(
+      (rq) => setReviewQueue(rq),
+      () => setReviewQueue([])
+    );
+    await Promise.all([docsP, trashP, idxP, rqP]);
   }
 
   async function dismissRequest(id: string) {
@@ -344,6 +340,24 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Ghost hold: while the indexes list is still loading, reserve
+          its space with a shimmer skeleton so the docs list below
+          doesn't jump when it arrives. Collapses quietly if the user
+          turns out to have no indexes. */}
+      {user && indexes === null && (
+        <div className="mb-8" aria-hidden>
+          <div className="h-6 w-36 bg-soft rounded mb-3 animate-pulse" />
+          <div className="bg-card border border-rule rounded-lg divide-y divide-rule overflow-hidden">
+            {[0, 1].map((i) => (
+              <div key={i} className="px-4 py-3 animate-pulse">
+                <div className="h-4 w-1/3 bg-soft rounded mb-2" />
+                <div className="h-3 w-1/2 bg-soft rounded" />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

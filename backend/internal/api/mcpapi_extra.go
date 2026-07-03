@@ -80,6 +80,8 @@ func (a *API) EditDocument(ctx context.Context, userID, docID, content, tokenID,
 		return nil, sanitizeStoreErr("mcp.edit.insert_document", err)
 	}
 	a.copyOpenCommentsToChild(ctx, parent.ID, doc)
+	// Summon the chain's standing reviewers onto the new revision.
+	a.fanOutRevisionEvents(doc, userID, tokenID, generatedBy)
 	return doc, nil
 }
 

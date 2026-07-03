@@ -118,6 +118,13 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/documents/{id}/review-requests", a.createReviewRequest).Methods("POST")
 	r.HandleFunc("/api/me/review-requests", a.listMyReviewRequests).Methods("GET")
 	r.HandleFunc("/api/review-requests/{id}/dismiss", a.dismissReviewRequest).Methods("POST")
+	r.HandleFunc("/api/documents/{id}/review-requests", a.listDocReviewRequests).Methods("GET")
+
+	// Standing reviewers (Phase 2b): subscribed to a chain root; every
+	// new revision mints a review request per subscriber.
+	r.HandleFunc("/api/documents/{id}/reviewers", a.createReviewSubscription).Methods("POST")
+	r.HandleFunc("/api/documents/{id}/reviewers", a.listReviewSubscriptions).Methods("GET")
+	r.HandleFunc("/api/review-subscriptions/{id}", a.deleteReviewSubscription).Methods("DELETE")
 
 	// Agent-proposed revision acceptance (P0-3). Human-only endpoint —
 	// pushback refuses to ship an agent-authored revision until it's

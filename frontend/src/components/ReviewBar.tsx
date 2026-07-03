@@ -7,7 +7,9 @@ import type {
   MdDocument,
   MentionCandidate,
   Review,
+  ReviewRequest,
   ReviewState,
+  ReviewSubscription,
 } from "../types";
 
 interface Props {
@@ -16,16 +18,52 @@ interface Props {
   onError: (err: APIError) => void;
 }
 
-/** Review-state buttons + agent-proposed banner. Rendered near the top
- * of the doc page so the coordination surface is visible before the
- * reviewer scrolls through the content. Kept intentionally minimal —
- * three buttons, a summary badge, and the accept-revision affordance
- * when applicable. No modal, no separate reviewer list; the aggregate
- * count is enough for the MVP. */
+const STATE_LABEL: Record<ReviewState, string> = {
+  approved: "approved",
+  changes_requested: "requested changes",
+  commented: "commented",
+};
+
+/** Review coordination bar: state buttons + who-reviewed-what chips +
+ * pending "awaiting X" chips + standing reviewers. All names, no bare
+ * counts — "1 changes requested" told you nothing; "You requested
+ * changes" does. Everything loads/refreshes off the doc object the
+ * page already maintains via SSE. */
 export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
   const [busy, setBusy] = useState(false);
   const my = doc.myReview;
-  const summary = doc.reviews;
+
+  // Coordination state fetched per doc: full review list (for named
+  // chips), pending requests on this doc, standing reviewers.
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [pending, setPending] = useState<ReviewRequest[]>([]);
+  const [subs, setSubs] = useState<ReviewSubscription[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rv, rq, sb] = await Promise.all([
+          api.listReviews(doc.id),
+          api.listDocReviewRequests(doc.id).catch(() => [] as ReviewRequest[]),
+          api.listReviewSubscriptions(doc.id).catch(
+            () => [] as ReviewSubscription[]
+          ),
+        ]);
+        if (cancelled) return;
+        setReviews(rv);
+        setPending(rq);
+        setSubs(sb);
+      } catch {
+        // Non-critical decoration — the state buttons still work.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `doc` object identity changes on every SSE-driven refetch, so
+    // this stays live without its own event plumbing.
+  }, [doc]);
 
   async function setState(state: ReviewState) {
     if (busy) return;
@@ -58,15 +96,41 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
     }
   }
 
+  async function removeSubscription(id: string) {
+    try {
+      await api.deleteReviewSubscription(id);
+      setSubs((s) => s.filter((x) => x.id !== id));
+    } catch (err) {
+      if (err instanceof APIError) onError(err);
+    }
+  }
+
+  async function cancelRequest(id: string) {
+    try {
+      await api.dismissReviewRequest(id);
+      setPending((p) => p.filter((x) => x.id !== id));
+    } catch (err) {
+      if (err instanceof APIError) onError(err);
+    }
+  }
+
   const buttons: { state: ReviewState; label: string; tone: string }[] = [
     { state: "commented", label: "Comment", tone: "text-ink" },
     { state: "approved", label: "Approve", tone: "text-success" },
     { state: "changes_requested", label: "Request changes", tone: "text-danger" },
   ];
 
+  const hasChips = reviews.length > 0 || pending.length > 0 || subs.length > 0;
+
   return (
     <div className="mb-4 space-y-2">
-      {doc.agentProposed && <AgentProposedBanner meta={doc.revisionMeta} onAccept={acceptRevision} busy={busy} />}
+      {doc.agentProposed && (
+        <AgentProposedBanner
+          meta={doc.revisionMeta}
+          onAccept={acceptRevision}
+          busy={busy}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted">Review:</span>
         {buttons.map((b) => {
@@ -89,23 +153,98 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
             </button>
           );
         })}
-        <RequestReviewMenu doc={doc} onError={onError} />
-        {summary && <SummaryBadge summary={summary} myReview={my} />}
+        <RequestReviewMenu
+          doc={doc}
+          pending={pending}
+          subs={subs}
+          onError={onError}
+          onRequested={(rq) =>
+            setPending((p) => [rq, ...p.filter((x) => x.id !== rq.id)])
+          }
+          onSubscribed={(sb) =>
+            setSubs((s) => [...s.filter((x) => x.id !== sb.id), sb])
+          }
+        />
       </div>
+
+      {/* Who-said-what chips. Named, never counted — this line is the
+          answer to "what does the review status actually mean?" */}
+      {hasChips && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {reviews.map((rv) => (
+            <span
+              key={(rv.author || "") + rv.updatedAt}
+              title={rv.note || undefined}
+              className={
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border " +
+                (rv.state === "approved"
+                  ? "border-success/40 text-success"
+                  : rv.state === "changes_requested"
+                    ? "border-danger/40 text-danger"
+                    : "border-rule text-muted")
+              }
+            >
+              {rv.state === "approved" ? "✓" : rv.state === "changes_requested" ? "±" : "💬"}{" "}
+              {rv.mine ? "You" : rv.author || "someone"}{" "}
+              {STATE_LABEL[rv.state]}
+            </span>
+          ))}
+          {pending.map((rq) => (
+            <span
+              key={rq.id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-rule text-muted"
+              title={`Requested by ${rq.requesterName}`}
+            >
+              awaiting {rq.reviewerName}
+              <button
+                onClick={() => cancelRequest(rq.id)}
+                className="hover:text-ink ml-0.5"
+                title="Cancel this review request"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+          {subs.map((sb) => (
+            <span
+              key={sb.id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rule text-faint"
+              title="Standing reviewer — asked again on every new revision"
+            >
+              ⟳ {sb.reviewerName}
+              <button
+                onClick={() => removeSubscription(sb.id)}
+                className="hover:text-ink ml-0.5"
+                title="Remove standing reviewer"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-/** "Request review" popover — one click on a person or agent creates
- * the request. Candidates load lazily on first open: humans who've
- * touched the doc (mention candidates, minus yourself) + your own
- * agent tokens. No modal, no multi-step flow. */
+/** "Request review" popover. One click on a person or agent creates
+ * the request; entries with a request already pending show
+ * "requested" and won't double-fire. The footer toggle upgrades the
+ * click to a STANDING subscription (review every future revision). */
 function RequestReviewMenu({
   doc,
+  pending,
+  subs,
   onError,
+  onRequested,
+  onSubscribed,
 }: {
   doc: MdDocument;
+  pending: ReviewRequest[];
+  subs: ReviewSubscription[];
   onError: (err: APIError) => void;
+  onRequested: (rq: ReviewRequest) => void;
+  onSubscribed: (sb: ReviewSubscription) => void;
 }) {
   const { user } = useAuth();
   const toast = useToast();
@@ -114,9 +253,9 @@ function RequestReviewMenu({
   const [humans, setHumans] = useState<MentionCandidate[]>([]);
   const [tokens, setTokens] = useState<APIToken[]>([]);
   const [sending, setSending] = useState(false);
+  const [standing, setStanding] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -150,13 +289,33 @@ function RequestReviewMenu({
     }
   }
 
-  async function request(target: { reviewerLogin?: string; tokenId?: string }, label: string) {
+  const pendingLogins = new Set(
+    pending.filter((p) => !p.reviewerTokenId).map((p) => p.reviewerName)
+  );
+  const pendingTokenIds = new Set(
+    pending.map((p) => p.reviewerTokenId).filter(Boolean)
+  );
+  const subTokenIds = new Set(subs.map((s) => s.reviewerTokenId).filter(Boolean));
+
+  async function request(
+    target: { reviewerLogin?: string; tokenId?: string },
+    label: string
+  ) {
     if (sending) return;
     setSending(true);
     try {
-      await api.createReviewRequest(doc.id, target);
+      const rq = await api.createReviewRequest(doc.id, target);
+      onRequested(rq);
+      if (standing) {
+        const sb = await api.createReviewSubscription(doc.id, target);
+        onSubscribed(sb);
+      }
       setOpen(false);
-      toast.success(`Review requested from ${label}`);
+      toast.success(
+        standing
+          ? `${label} will review this and every future revision`
+          : `Review requested from ${label}`
+      );
     } catch (err) {
       if (err instanceof APIError) onError(err);
     } finally {
@@ -175,7 +334,7 @@ function RequestReviewMenu({
         Request review
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-30 w-60 max-h-72 overflow-auto rounded-md border border-rule bg-card shadow-lg py-1">
+        <div className="absolute left-0 top-full mt-1 z-30 w-64 max-h-80 overflow-auto rounded-md border border-rule bg-card shadow-lg py-1">
           {loading && <div className="px-3 py-2 text-muted">Loading…</div>}
           {empty && (
             <div className="px-3 py-2 text-muted">
@@ -188,23 +347,34 @@ function RequestReviewMenu({
               <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide text-faint">
                 People
               </div>
-              {humans.map((c) => (
-                <button
-                  key={c.login}
-                  disabled={sending}
-                  onClick={() =>
-                    request({ reviewerLogin: c.login }, c.name || c.login)
-                  }
-                  className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
-                >
-                  {c.avatarUrl ? (
-                    <img src={c.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
-                  ) : (
-                    <span className="w-5 h-5 rounded-full bg-soft" />
-                  )}
-                  <span className="truncate">{c.name || c.login}</span>
-                </button>
-              ))}
+              {humans.map((c) => {
+                const requested =
+                  pendingLogins.has(c.name) || pendingLogins.has(c.login);
+                return (
+                  <button
+                    key={c.login}
+                    disabled={sending || requested}
+                    onClick={() =>
+                      request({ reviewerLogin: c.login }, c.name || c.login)
+                    }
+                    className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {c.avatarUrl ? (
+                      <img
+                        src={c.avatarUrl}
+                        alt=""
+                        className="w-5 h-5 rounded-full"
+                      />
+                    ) : (
+                      <span className="w-5 h-5 rounded-full bg-soft" />
+                    )}
+                    <span className="truncate flex-1">{c.name || c.login}</span>
+                    {requested && (
+                      <span className="text-[10px] text-faint">requested</span>
+                    )}
+                  </button>
+                );
+              })}
             </>
           )}
           {tokens.length > 0 && (
@@ -212,45 +382,43 @@ function RequestReviewMenu({
               <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide text-faint">
                 Your agents
               </div>
-              {tokens.map((tk) => (
-                <button
-                  key={tk.id}
-                  disabled={sending}
-                  onClick={() => request({ tokenId: tk.id }, tk.label)}
-                  className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
-                >
-                  <span className="w-5 h-5 rounded-md bg-accent text-accent-fg flex items-center justify-center text-[10px]">
-                    ⚙
-                  </span>
-                  <span className="truncate">{tk.label}</span>
-                </button>
-              ))}
+              {tokens.map((tk) => {
+                const requested = pendingTokenIds.has(tk.id);
+                const subscribed = subTokenIds.has(tk.id);
+                return (
+                  <button
+                    key={tk.id}
+                    disabled={sending || requested || subscribed}
+                    onClick={() => request({ tokenId: tk.id }, tk.label)}
+                    className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span className="w-5 h-5 rounded-md bg-accent text-accent-fg flex items-center justify-center text-[10px]">
+                      ⚙
+                    </span>
+                    <span className="truncate flex-1">{tk.label}</span>
+                    {subscribed ? (
+                      <span className="text-[10px] text-faint">standing</span>
+                    ) : requested ? (
+                      <span className="text-[10px] text-faint">requested</span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </>
+          )}
+          {!empty && !loading && (
+            <label className="flex items-center gap-2 px-3 pt-2 pb-1.5 mt-1 border-t border-rule cursor-pointer text-muted">
+              <input
+                type="checkbox"
+                checked={standing}
+                onChange={(e) => setStanding(e.target.checked)}
+              />
+              <span>Also review every future revision</span>
+            </label>
           )}
         </div>
       )}
     </div>
-  );
-}
-
-function SummaryBadge({
-  summary,
-  myReview,
-}: {
-  summary: NonNullable<MdDocument["reviews"]>;
-  myReview?: Review;
-}) {
-  const parts: string[] = [];
-  if (summary.approved > 0) parts.push(`${summary.approved} approved`);
-  if (summary.changesRequested > 0)
-    parts.push(`${summary.changesRequested} changes requested`);
-  if (summary.commented > 0) parts.push(`${summary.commented} commented`);
-  if (parts.length === 0) return null;
-  return (
-    <span className="ml-auto text-xs text-muted">
-      {parts.join(" · ")}
-      {myReview ? " (incl. you)" : ""}
-    </span>
   );
 }
 
@@ -270,8 +438,8 @@ function AgentProposedBanner({
         <span className="font-medium">Agent-proposed revision</span>
         <span className="text-muted">
           {" "}
-          — written by {author}. Accept it to allow Push to GitHub, or reject by opening a fresh
-          revision.
+          — written by {author}. Accept it to allow Push to GitHub, or reject
+          by opening a fresh revision.
         </span>
       </div>
       <button

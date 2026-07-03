@@ -70,6 +70,9 @@ func (s *Store) HiddenItems() *mongo.Collection    { return s.db.Collection("hid
 func (s *Store) IndexItems() *mongo.Collection     { return s.db.Collection("index_items") }
 func (s *Store) Reviews() *mongo.Collection        { return s.db.Collection("reviews") }
 func (s *Store) ReviewRequests() *mongo.Collection { return s.db.Collection("review_requests") }
+func (s *Store) ReviewSubscriptions() *mongo.Collection {
+	return s.db.Collection("review_subscriptions")
+}
 
 func (s *Store) ensureIndexes(ctx context.Context) {
 	_, _ = s.Documents().Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -138,6 +141,10 @@ func (s *Store) ensureIndexes(ctx context.Context) {
 		{Keys: bson.D{{Key: "reviewer_token_id", Value: 1}, {Key: "state", Value: 1}, {Key: "created_at", Value: -1}}},
 		// Auto-completion lookup when a review lands on a doc.
 		{Keys: bson.D{{Key: "document_id", Value: 1}, {Key: "state", Value: 1}}},
+	})
+	_, _ = s.ReviewSubscriptions().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		// The revision hook's fan-out lookup: all subscribers on a chain.
+		{Keys: bson.D{{Key: "root_document_id", Value: 1}}},
 	})
 }
 
@@ -310,6 +317,16 @@ func (s *Store) listReviewRequests(ctx context.Context, filter bson.M) ([]models
 	return out, nil
 }
 
+// ListPendingReviewRequestsForDoc returns the pending requests ON a
+// doc — the "awaiting review from X" surface every viewer sees, so
+// nobody re-requests a review that's already out.
+func (s *Store) ListPendingReviewRequestsForDoc(ctx context.Context, docID string) ([]models.ReviewRequest, error) {
+	return s.listReviewRequests(ctx, bson.M{
+		"document_id": docID,
+		"state":       string(models.ReviewRequestPending),
+	})
+}
+
 // GetReviewRequest fetches one request by ID, or nil.
 func (s *Store) GetReviewRequest(ctx context.Context, id string) (*models.ReviewRequest, error) {
 	var rr models.ReviewRequest
@@ -369,6 +386,84 @@ func (s *Store) CompleteReviewRequestsForReviewer(ctx context.Context, docID, us
 		}
 	}
 	return matched, nil
+}
+
+// ReviewSubscriptionID is the deterministic composite _id for a
+// standing-reviewer subscription: rootDocID:reviewerKey.
+func ReviewSubscriptionID(rootDocID, reviewerKey string) string {
+	return rootDocID + ":" + reviewerKey
+}
+
+// UpsertReviewSubscription creates-or-refreshes a standing reviewer
+// on a chain root. Idempotent.
+func (s *Store) UpsertReviewSubscription(ctx context.Context, sub *models.ReviewSubscription) error {
+	if sub.RootDocumentID == "" {
+		return fmt.Errorf("upsert review subscription: missing root_document_id")
+	}
+	key := sub.ReviewerUserID
+	if key == "" {
+		key = sub.ReviewerTokenID
+	}
+	if key == "" {
+		return fmt.Errorf("upsert review subscription: missing reviewer")
+	}
+	if sub.ID == "" {
+		sub.ID = ReviewSubscriptionID(sub.RootDocumentID, key)
+	}
+	now := time.Now().UTC()
+	if sub.CreatedAt.IsZero() {
+		sub.CreatedAt = now
+	}
+	_, err := s.ReviewSubscriptions().UpdateOne(ctx,
+		bson.M{"_id": sub.ID},
+		bson.M{
+			"$set": bson.M{
+				"root_document_id":  sub.RootDocumentID,
+				"reviewer_user_id":  sub.ReviewerUserID,
+				"reviewer_token_id": sub.ReviewerTokenID,
+				"reviewer_name":     sub.ReviewerName,
+				"created_by_id":     sub.CreatedByID,
+			},
+			"$setOnInsert": bson.M{"created_at": sub.CreatedAt},
+		},
+		options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+// ListReviewSubscriptions returns the standing reviewers on a chain
+// root, oldest first (stable chip ordering in the UI).
+func (s *Store) ListReviewSubscriptions(ctx context.Context, rootDocID string) ([]models.ReviewSubscription, error) {
+	cur, err := s.ReviewSubscriptions().Find(ctx,
+		bson.M{"root_document_id": rootDocID},
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: 1}}).SetLimit(50))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []models.ReviewSubscription
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetReviewSubscription fetches one subscription by ID, or nil.
+func (s *Store) GetReviewSubscription(ctx context.Context, id string) (*models.ReviewSubscription, error) {
+	var sub models.ReviewSubscription
+	err := s.ReviewSubscriptions().FindOne(ctx, bson.M{"_id": id}).Decode(&sub)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
+// DeleteReviewSubscription removes a standing reviewer.
+func (s *Store) DeleteReviewSubscription(ctx context.Context, id string) error {
+	_, err := s.ReviewSubscriptions().DeleteOne(ctx, bson.M{"_id": id})
+	return err
 }
 
 // HideItem marks an item as hidden from the user's personal lists.

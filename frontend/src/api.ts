@@ -19,6 +19,7 @@ import type {
   Review,
   ReviewRequest,
   ReviewState,
+  ReviewSubscription,
   RevisionPreview,
   SelfDocRedirect,
   SyncSourceResponse,
@@ -545,6 +546,27 @@ export const api = {
     }),
   /** Pending review requests targeting the current identity. */
   listMyReviewRequests: () => req<ReviewRequest[]>(`/api/me/review-requests`),
+  /** Pending review requests ON a doc — the "awaiting X" chips that
+   * stop anyone from re-requesting a review that's already out. */
+  listDocReviewRequests: (documentId: string) =>
+    req<ReviewRequest[]>(`/api/documents/${documentId}/review-requests`),
+  /** Standing reviewers on this doc's chain (Phase 2b). */
+  listReviewSubscriptions: (documentId: string) =>
+    req<ReviewSubscription[]>(`/api/documents/${documentId}/reviewers`),
+  /** Subscribe a standing reviewer — every future revision mints a
+   * review request for them automatically. Same target shape as
+   * createReviewRequest. */
+  createReviewSubscription: (
+    documentId: string,
+    target: { reviewerLogin?: string; tokenId?: string }
+  ) =>
+    req<ReviewSubscription>(`/api/documents/${documentId}/reviewers`, {
+      method: "POST",
+      body: JSON.stringify(target),
+    }),
+  /** Remove a standing reviewer (subscriber or whoever added them). */
+  deleteReviewSubscription: (id: string) =>
+    req<void>(`/api/review-subscriptions/${id}`, { method: "DELETE" }),
   /** Dismiss a pending request (reviewer or requester only). */
   dismissReviewRequest: (id: string) =>
     req<void>(`/api/review-requests/${id}/dismiss`, { method: "POST" }),

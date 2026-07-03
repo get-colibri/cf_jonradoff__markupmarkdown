@@ -264,6 +264,26 @@ type ReviewSummary struct {
 	Commented        int `json:"commented"`
 }
 
+// ReviewSubscription is a standing reviewer on a revision chain
+// (Phase 2b — "CI for prose"). Anchored to the chain ROOT because
+// every revision is a new doc; the subscription follows the chain.
+// Each new revision automatically mints a ReviewRequest per
+// subscriber (skipping the revision's own author). Exactly one of
+// ReviewerUserID / ReviewerTokenID is set; the ID is deterministic
+// (rootDocID + ":" + reviewer key) so re-subscribing is idempotent.
+type ReviewSubscription struct {
+	ID             string `bson:"_id" json:"id"`
+	RootDocumentID string `bson:"root_document_id" json:"rootDocumentId"`
+
+	ReviewerUserID  string `bson:"reviewer_user_id,omitempty" json:"-"`
+	ReviewerTokenID string `bson:"reviewer_token_id,omitempty" json:"reviewerTokenId,omitempty"`
+	// Display name, resolved at write time (token label or user name).
+	ReviewerName string `bson:"reviewer_name" json:"reviewerName"`
+
+	CreatedByID string    `bson:"created_by_id" json:"-"`
+	CreatedAt   time.Time `bson:"created_at" json:"createdAt"`
+}
+
 // ReviewRequestState is the lifecycle of a review request.
 type ReviewRequestState string
 

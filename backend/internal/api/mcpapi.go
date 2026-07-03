@@ -499,6 +499,8 @@ func (a *API) ReviseWithAI(ctx context.Context, userID, docID string, commentIDs
 		// acceptRevision behaviour.
 		a.copyOpenCommentsToChild(ctx, doc.ID, newDoc)
 		out.NewDocID = newDoc.ID
+		// Summon the chain's standing reviewers onto the new revision.
+		a.fanOutRevisionEvents(newDoc, userID, tokenID, generatedBy)
 	}
 	return out, nil
 }
