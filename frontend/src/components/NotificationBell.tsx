@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { NotificationItem } from "../types";
 import { useAuth } from "../auth";
-import { formatRelative } from "../utils/format";
+import TimeAgo from "./TimeAgo";
 
 export default function NotificationBell() {
   const { user } = useAuth();
@@ -180,7 +180,7 @@ export default function NotificationBell() {
                           {n.preview}
                         </div>
                         <div className="text-[10px] text-faint mt-0.5">
-                          {formatRelative(n.createdAt)}
+                          <TimeAgo iso={n.createdAt} />
                         </div>
                       </div>
                       {!n.readAt && (

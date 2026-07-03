@@ -1,3 +1,29 @@
+/** Short human date: "Jun 4", adding the year only when it isn't the
+ * current one ("Jun 4, 2025"). Month names beat numeric forms —
+ * "6/4/2026" reads as April 6 in half the world. */
+export function formatShortDate(date: Date): string {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  if (date.getFullYear() !== new Date().getFullYear()) {
+    opts.year = "numeric";
+  }
+  return date.toLocaleDateString(undefined, opts);
+}
+
+/** Full local timestamp for tooltips: "June 4, 2026, 2:41 PM EDT".
+ * Always renders in the browser's local timezone. */
+export function formatExact(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return iso;
+  return date.toLocaleString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export function formatRelative(iso: string): string {
   const date = new Date(iso);
   const now = Date.now();
@@ -9,13 +35,13 @@ export function formatRelative(iso: string): string {
     if (abs < 3600) return `in ${Math.floor(abs / 60)}m`;
     if (abs < 86400) return `in ${Math.floor(abs / 3600)}h`;
     if (abs < 86400 * 30) return `in ${Math.floor(abs / 86400)}d`;
-    return `on ${date.toLocaleDateString()}`;
+    return `on ${formatShortDate(date)}`;
   }
   if (diffSec < 60) return "just now";
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
   if (diffSec < 86400 * 7) return `${Math.floor(diffSec / 86400)}d ago`;
-  return date.toLocaleDateString();
+  return formatShortDate(date);
 }
 
 export function initials(name: string): string {

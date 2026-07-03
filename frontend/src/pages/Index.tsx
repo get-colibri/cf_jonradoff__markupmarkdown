@@ -6,8 +6,8 @@ import ErrorBlock from "../components/ErrorBlock";
 import { useToast, toastMessageFor } from "../components/Toast";
 import { useDialog } from "../components/Dialogs";
 import { useAuth } from "../auth";
-import { formatRelative } from "../utils/format";
 import { canonicalIndexPath, rewriteToCanonical } from "../utils/canonicalUrl";
+import TimeAgo from "../components/TimeAgo";
 
 // IndexPage renders a single markdown-index (repo / user / org).
 // Clicking a row ingests the corresponding .md file via the existing
@@ -472,7 +472,7 @@ export default function IndexPage() {
             Private
           </span>
         )}
-        <span>· updated {formatRelative(index.updatedAt)}</span>
+        <span>· updated <TimeAgo iso={index.updatedAt} /></span>
         {index.truncated && (
           <span className="text-warn-action">
             · listing truncated by GitHub (very large tree)

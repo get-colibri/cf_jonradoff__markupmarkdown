@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, APIError } from "../api";
 import { useAuth } from "../auth";
-import { formatRelative } from "../utils/format";
 import ErrorBlock from "../components/ErrorBlock";
 import type { AdminOverview, AdminRecentDoc } from "../types";
+import TimeAgo from "../components/TimeAgo";
 
 /** Superuser console. One page, one load: headline counts, a 30-day
  * docs-per-day sparkline, recent agent activity, and the global feed
@@ -100,7 +100,7 @@ export default function AdminPage() {
                           doc
                         </Link>
                       )}
-                      {formatRelative(a.at)}
+                      <TimeAgo iso={a.at} />
                     </span>
                   </div>
                 ))}
@@ -138,7 +138,7 @@ export default function AdminPage() {
                       <td className="px-3 py-2 text-muted">{d.createdBy || "—"}</td>
                       <td className="px-3 py-2 text-muted">{d.commentCount || ""}</td>
                       <td className="px-3 py-2 text-muted whitespace-nowrap">
-                        {formatRelative(d.createdAt)}
+                        <TimeAgo iso={d.createdAt} />
                       </td>
                     </tr>
                   ))}

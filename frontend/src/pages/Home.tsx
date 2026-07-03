@@ -7,6 +7,7 @@ import type {
   ReviewRequest,
   TrashItem,
 } from "../types";
+import TimeAgo from "../components/TimeAgo";
 import { formatRelative } from "../utils/format";
 import ErrorBlock from "../components/ErrorBlock";
 import { useDialog } from "../components/Dialogs";
@@ -319,7 +320,7 @@ export default function HomePage() {
                     {rq.documentTitle}
                   </Link>
                   <div className="text-xs text-muted mt-0.5">
-                    {rq.requesterName} asked {formatRelative(rq.createdAt)}
+                    {rq.requesterName} asked <TimeAgo iso={rq.createdAt} />
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -391,7 +392,7 @@ export default function HomePage() {
                     >
                       {idx.sourceUrl.replace(/^https:\/\/github\.com\//, "")}
                     </a>
-                    {" · "}updated {formatRelative(idx.updatedAt)}
+                    {" · "}updated <TimeAgo iso={idx.updatedAt} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
@@ -516,7 +517,7 @@ export default function HomePage() {
                 </Link>
                 <div className="text-xs text-muted mt-0.5 truncate">
                   {d.origin === "url" && d.sourceUrl ? d.sourceUrl : "Uploaded"}
-                  {" · "}updated {formatRelative(d.updatedAt)}
+                  {" · "}updated <TimeAgo iso={d.updatedAt} />
                 </div>
                 {d.olderVersions && d.olderVersions.length > 0 && (
                   <OlderVersionsExpander older={d.olderVersions} />
@@ -562,7 +563,7 @@ export default function HomePage() {
                       <div className="min-w-0 text-sm">
                         <div className="text-ink truncate">{t.title}</div>
                         <div className="text-[11px] text-muted">
-                          Deleted {formatRelative(t.deletedAt)} ·{" "}
+                          Deleted <TimeAgo iso={t.deletedAt} /> ·{" "}
                           {t.daysLeft > 0
                             ? `purged in ${t.daysLeft} day${t.daysLeft === 1 ? "" : "s"}`
                             : "scheduled for purge"}
@@ -641,7 +642,7 @@ function OlderVersionsExpander({
                 title={`Open this older copy (last updated ${formatRelative(v.updatedAt)})`}
               >
                 <span className="text-muted">{v.title}</span>
-                {" · "}updated {formatRelative(v.updatedAt)}
+                {" · "}updated <TimeAgo iso={v.updatedAt} />
               </Link>
             </li>
           ))}

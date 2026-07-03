@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import Modal from "./Modal";
 import { api } from "../api";
 import type { AnthropicKeyStatus } from "../types";
-import { formatRelative } from "../utils/format";
 import { useDialog } from "./Dialogs";
+import TimeAgo from "./TimeAgo";
 
 interface Props {
   onClose: () => void;
@@ -94,7 +94,7 @@ export default function APIKeyModal({ onClose, onSaved }: Props) {
                   <div className="font-mono text-muted">{status.hint}</div>
                   {status.setAt && (
                     <div className="text-xs text-faint mt-0.5">
-                      Saved {formatRelative(status.setAt)}
+                      Saved <TimeAgo iso={status.setAt} />
                     </div>
                   )}
                 </div>

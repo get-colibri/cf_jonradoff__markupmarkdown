@@ -7,6 +7,7 @@ import type {
   TokenEvent,
   TokenScope,
 } from "../types";
+import TimeAgo from "./TimeAgo";
 import { formatRelative } from "../utils/format";
 import { useDialog } from "./Dialogs";
 import { useToast, toastMessageFor } from "./Toast";
@@ -328,7 +329,7 @@ export default function TokensModal({ onClose }: Props) {
                       {t.prefix}
                     </div>
                     <div className="text-[11px] text-faint">
-                      Created {formatRelative(t.createdAt)}
+                      Created <TimeAgo iso={t.createdAt} />
                       {t.lastUsedAt && ` · last used ${formatRelative(t.lastUsedAt)}`}
                       {t.expiresAt
                         ? ` · expires ${formatRelative(t.expiresAt)}`
@@ -398,7 +399,7 @@ export default function TokensModal({ onClose }: Props) {
                 <li key={e.id} className="flex justify-between gap-2">
                   <span className="font-mono text-ink">{e.action}</span>
                   <span className="text-muted shrink-0">
-                    {formatRelative(e.at)}
+                    <TimeAgo iso={e.at} />
                     {e.documentId && (
                       <>
                         {" "}

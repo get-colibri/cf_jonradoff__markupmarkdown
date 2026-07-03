@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { Comment, Reply } from "../types";
-import { colorFor, formatRelative, initials } from "../utils/format";
+import { colorFor, initials } from "../utils/format";
 import { getAuthor } from "../utils/author";
 import { useAuth } from "../auth";
 import { useDialog } from "./Dialogs";
 import RichBody from "./RichBody";
 import MentionInput from "./MentionInput";
+import TimeAgo from "./TimeAgo";
 
 interface Props {
   comment: Comment;
@@ -244,7 +245,7 @@ export default function CommentCard({
               )}
             </div>
             <div className="text-[11px] text-faint">
-              {formatRelative(comment.createdAt)}
+              <TimeAgo iso={comment.createdAt} />
             </div>
           </div>
           {editing ? (
@@ -500,7 +501,7 @@ function ReplyRow({
             )}
           </div>
           <div className="text-[10px] text-faint">
-            {formatRelative(reply.createdAt)}
+            <TimeAgo iso={reply.createdAt} />
           </div>
         </div>
         {editing ? (

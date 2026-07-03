@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { MdDocument } from "../types";
-import { formatRelative } from "../utils/format";
+import TimeAgo from "./TimeAgo";
 
 // Toolbar that lives at the top of the document content column: parent
 // link (for AI revisions), title-as-rename-button, action buttons,
@@ -180,7 +180,7 @@ export default function DocumentToolbar({
             {" · "}
           </>
         )}
-        updated {formatRelative(doc.updatedAt)}
+        updated <TimeAgo iso={doc.updatedAt} />
         {!me && !signedIn && (
           <span className="ml-2" style={{ color: "var(--color-warn-action)" }}>· Set your name in the header to comment</span>
         )}
