@@ -566,12 +566,22 @@ func (a *API) getDocument(w http.ResponseWriter, r *http.Request) {
 	if doc.ParentID != "" {
 		if root, err := a.store.RootDocument(r.Context(), doc.ID); err == nil && root != nil && root.ID != doc.ID {
 			resp.RootDocument = &parentSummary{ID: root.ID, Title: root.Title}
-			rootCopy := *doc
-			rootCopy.SourceSHA = root.SourceSHA
-			rootCopy.SourceLatestSHA = root.SourceLatestSHA
-			rootCopy.SourceDriftedAt = root.SourceDriftedAt
-			rootCopy.SourceCheckedAt = root.SourceCheckedAt
-			resp.Document = &rootCopy
+			// A child whose own baseline already matches the current
+			// upstream SHA was created FROM that upstream (merge/sync)
+			// — there is nothing to merge, so don't manufacture drift
+			// by overlaying the root's stale baseline onto it.
+			if doc.SourceSHA == "" || doc.SourceSHA != root.SourceLatestSHA {
+				rootCopy := *doc
+				rootCopy.SourceSHA = root.SourceSHA
+				rootCopy.SourceLatestSHA = root.SourceLatestSHA
+				rootCopy.SourceDriftedAt = root.SourceDriftedAt
+				rootCopy.SourceCheckedAt = root.SourceCheckedAt
+				// Ignore state lives on the root too (ignoreDriftSource
+				// stamps rootForDrift) — without mirroring it, a
+				// dismissed banner re-appears on every child revision.
+				rootCopy.SourceDriftIgnoredSHA = root.SourceDriftIgnoredSHA
+				resp.Document = &rootCopy
+			}
 		}
 	}
 	// Read prior view BEFORE bumping it, so the response reflects the

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"markupmarkdown/internal/testutil"
 )
 
@@ -73,4 +75,71 @@ func TestGetDocument_RootRecordsViewedTimestamp(t *testing.T) {
 	// depending on the async-enqueue race; this is a smoke
 	// expectation, not an exact assertion.
 	_ = body
+}
+
+// Regression for the false-drift banner (reported 2026-07-02 on
+// beamable/CrmDesign Federation_PRD.md). Two bugs in the child-doc
+// drift overlay:
+//  1. The root's SourceDriftIgnoredSHA wasn't mirrored, so an Ignore
+//     on the root re-surfaced the banner on every child revision.
+//  2. A child whose own source_sha equals the current upstream SHA
+//     (i.e. it was created FROM that upstream via merge/sync) still
+//     inherited the root's stale baseline — manufacturing drift when
+//     there was nothing to merge.
+func TestGetDocument_ChildDriftOverlay(t *testing.T) {
+	srv, st, a := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	root := testutil.NewTestDocument(t, st, user.ID, "v1\n")
+
+	child, err := a.EditDocument(context.Background(), user.ID, root.ID, "v2\n", "", "")
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+
+	// Stamp drift state on the ROOT: upstream moved to SHA "new", the
+	// root's baseline is "old", and the user has ignored "new".
+	_, err = st.Documents().UpdateOne(context.Background(),
+		bson.M{"_id": root.ID},
+		bson.M{"$set": bson.M{
+			"source_sha":               "old",
+			"source_latest_sha":        "new",
+			"source_drift_ignored_sha": "new",
+		}})
+	if err != nil {
+		t.Fatalf("stamp root drift: %v", err)
+	}
+
+	// Case 1: child baseline differs from upstream → overlay applies,
+	// and it must carry the root's ignored SHA so the banner stays
+	// dismissed.
+	_, err = st.Documents().UpdateOne(context.Background(),
+		bson.M{"_id": child.ID},
+		bson.M{"$set": bson.M{"source_sha": "unrelated"}})
+	if err != nil {
+		t.Fatalf("stamp child sha: %v", err)
+	}
+	status, body := doJSON(t, srv, "GET", "/api/documents/"+child.ID, nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if !strings.Contains(string(body), `"sourceDriftIgnoredSha":"new"`) {
+		t.Errorf("overlay dropped the root's ignored SHA: %s", body)
+	}
+
+	// Case 2: child baseline EQUALS the current upstream SHA (it was
+	// created from that upstream) → no drift overlay at all.
+	_, err = st.Documents().UpdateOne(context.Background(),
+		bson.M{"_id": child.ID},
+		bson.M{"$set": bson.M{"source_sha": "new"}})
+	if err != nil {
+		t.Fatalf("re-stamp child sha: %v", err)
+	}
+	status, body = doJSON(t, srv, "GET", "/api/documents/"+child.ID, nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if strings.Contains(string(body), `"sourceLatestSha":"new"`) {
+		t.Errorf("child in sync with upstream still shows drift: %s", body)
+	}
 }
