@@ -611,12 +611,15 @@ export const api = {
     scope: TokenScope;
     // -1 = never expires; 0 = server default; positive = days
     expiresInDays: number;
+    /** Backend fulfills review requests to this token automatically
+     * with Claude, billed to your stored Anthropic key. */
+    autoReview?: boolean;
   }) =>
     req<CreatedTokenResponse>("/api/me/tokens", {
       method: "POST",
       body: JSON.stringify(input),
     }),
-  updateToken: (id: string, patch: { label?: string; scope?: TokenScope }) =>
+  updateToken: (id: string, patch: { label?: string; scope?: TokenScope; autoReview?: boolean }) =>
     req<void>(`/api/me/tokens/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),

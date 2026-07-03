@@ -321,6 +321,11 @@ type ReviewRequest struct {
 	State       ReviewRequestState `bson:"state" json:"state"`
 	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
 	CompletedAt *time.Time         `bson:"completed_at,omitempty" json:"completedAt,omitempty"`
+
+	// AutoAttemptedAt is stamped when the backend auto-reviewer picks
+	// this request up — the claim that prevents double-fulfillment and
+	// burn loops (one attempt per request per 24h).
+	AutoAttemptedAt *time.Time `bson:"auto_attempted_at,omitempty" json:"-"`
 }
 
 // UserSecrets holds per-user encrypted credentials. One document per user.
@@ -390,6 +395,13 @@ type APIToken struct {
 	ID         string     `bson:"_id" json:"id"`
 	UserID     string     `bson:"user_id" json:"-"`
 	Hash       string     `bson:"hash" json:"-"`
+	// AutoReview opts this token into backend-fulfilled reviews: when a
+	// review request targets it, the server itself performs the review
+	// with Claude (using the owner's stored Anthropic key) instead of
+	// waiting for an external agent to poll. The review is written
+	// through the same internal paths an external agent would use, so
+	// badges, gates, and fulfillment all behave identically.
+	AutoReview bool `bson:"auto_review,omitempty" json:"autoReview,omitempty"`
 	Prefix     string     `bson:"prefix" json:"prefix"` // first 12 chars of token (e.g. "mmk_a3f7c2…")
 	Label      string     `bson:"label" json:"label"`
 	Scope      TokenScope `bson:"scope,omitempty" json:"scope"`

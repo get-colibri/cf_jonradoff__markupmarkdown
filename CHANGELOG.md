@@ -8,6 +8,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Auto-review tokens — server-fulfilled reviews.** Flag a token as
+  *auto-review* and the backend itself answers review requests
+  targeting it: Claude reads the doc (plus open discussion, so it
+  doesn't repeat feedback), leaves up to 5 anchored suggestions with
+  rationales, and sets an honest review state — all through the same
+  internal paths an external agent uses, billed to the owner's stored
+  Anthropic key. Event-driven (fulfillment starts seconds after the
+  request is minted) with a 10-minute crash-recovery sweep; atomic
+  per-request claims cap attempts at one per day. Combined with
+  standing reviewers this completes CI-for-prose: save a revision,
+  get a real review back in under a minute, no external agent or cron
+  required.
+- **Admin: sortable public-docs table + Modified column.** Click any
+  column header to sort (click again to reverse); defaults to
+  last-modified, newest first.
+
 - **Suggestion diff preview.** Suggested changes render as a
   tracked-changes inline word diff (removed words struck in red,
   insertions in green) with a Changes/Result toggle — you read the

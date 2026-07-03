@@ -33,6 +33,8 @@ Identity sources:
 
 Tokens can be scoped per-agent and revoked any time. Never embed the token in a comment body or commit it to a public repo.
 
+**Auto-review tokens**: a token can be flagged *auto-review* at creation — the SERVER then fulfills review requests targeting it (Claude reviews the doc, leaves suggestions, sets a review state; billed to the owner's stored Anthropic key). If your token is auto-review, `list_review_requests` will usually be empty because the backend answers within seconds. Poll-based external agents and auto-review are alternatives, not layers — pick one per token.
+
 ## MCP server
 
 | Property | Value |

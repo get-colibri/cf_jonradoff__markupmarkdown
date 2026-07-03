@@ -30,6 +30,12 @@ type API struct {
 	sseCounter   *limits.Counter
 	reviseSlots  *limits.PerKeySemaphore
 	viewQueue    chan viewEvent
+
+	// Auto-review worker plumbing (autoreview.go). autoReviewCh is the
+	// fast path from request-mint to fulfillment; reviewFn is the test
+	// seam over ai.ReviewDoc (nil = real Claude).
+	autoReviewCh chan string
+	reviewFn     autoReviewFn
 }
 
 func New(cfg *config.Config, st *store.Store) (*API, error) {
@@ -37,7 +43,8 @@ func New(cfg *config.Config, st *store.Store) (*API, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &API{cfg: cfg, store: st, hub: NewHub(), vault: vault}
+	a := &API{cfg: cfg, store: st, hub: NewHub(), vault: vault,
+		autoReviewCh: make(chan string, 64)}
 	a.initLimits()
 	return a, nil
 }

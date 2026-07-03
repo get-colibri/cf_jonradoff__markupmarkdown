@@ -14,6 +14,32 @@ export default function AdminPage() {
   const [ov, setOv] = useState<AdminOverview | null>(null);
   const [recent, setRecent] = useState<AdminRecentDoc[] | null>(null);
   const [error, setError] = useState<APIError | null>(null);
+  // Sortable public-docs table. Defaults to last-modified, newest
+  // first — "what changed recently" is the question the feed answers.
+  const [sortKey, setSortKey] = useState<SortKey>("updatedAt");
+  const [sortAsc, setSortAsc] = useState(false);
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortAsc((a) => !a);
+    } else {
+      setSortKey(key);
+      // Dates read best newest-first; text columns A→Z.
+      setSortAsc(key === "title" || key === "createdBy");
+    }
+  }
+
+  const sorted = recent
+    ? [...recent].sort((a, b) => {
+        const va = a[sortKey] ?? "";
+        const vb = b[sortKey] ?? "";
+        const cmp =
+          typeof va === "number" && typeof vb === "number"
+            ? va - vb
+            : String(va).localeCompare(String(vb));
+        return sortAsc ? cmp : -cmp;
+      })
+    : null;
 
   useEffect(() => {
     if (authLoading || !user || !isAdmin) return;
@@ -118,14 +144,15 @@ export default function AdminPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-muted border-b border-rule">
-                    <th className="px-3 py-2 font-medium">Title</th>
-                    <th className="px-3 py-2 font-medium">Creator</th>
-                    <th className="px-3 py-2 font-medium">Comments</th>
-                    <th className="px-3 py-2 font-medium">Created</th>
+                    <SortableTh label="Title" k="title" sortKey={sortKey} asc={sortAsc} onSort={toggleSort} />
+                    <SortableTh label="Creator" k="createdBy" sortKey={sortKey} asc={sortAsc} onSort={toggleSort} />
+                    <SortableTh label="Comments" k="commentCount" sortKey={sortKey} asc={sortAsc} onSort={toggleSort} />
+                    <SortableTh label="Modified" k="updatedAt" sortKey={sortKey} asc={sortAsc} onSort={toggleSort} />
+                    <SortableTh label="Created" k="createdAt" sortKey={sortKey} asc={sortAsc} onSort={toggleSort} />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-rule">
-                  {recent.map((d) => (
+                  {(sorted ?? []).map((d) => (
                     <tr key={d.id} className="hover:bg-soft">
                       <td className="px-3 py-2">
                         <Link to={`/d/${d.id}`} className="text-accent hover:underline">
@@ -137,6 +164,9 @@ export default function AdminPage() {
                       </td>
                       <td className="px-3 py-2 text-muted">{d.createdBy || "—"}</td>
                       <td className="px-3 py-2 text-muted">{d.commentCount || ""}</td>
+                      <td className="px-3 py-2 text-muted whitespace-nowrap">
+                        <TimeAgo iso={d.updatedAt} />
+                      </td>
                       <td className="px-3 py-2 text-muted whitespace-nowrap">
                         <TimeAgo iso={d.createdAt} />
                       </td>
@@ -173,4 +203,44 @@ function Stat({
 function pct(part: number, total: number): string {
   if (total === 0) return "0%";
   return Math.round((part / total) * 100) + "%";
+}
+
+type SortKey = "title" | "createdBy" | "commentCount" | "updatedAt" | "createdAt";
+
+/** Clickable column header: click to sort, click again to reverse.
+ * The active column shows a direction caret. */
+function SortableTh({
+  label,
+  k,
+  sortKey,
+  asc,
+  onSort,
+}: {
+  label: string;
+  k: SortKey;
+  sortKey: SortKey;
+  asc: boolean;
+  onSort: (k: SortKey) => void;
+}) {
+  const active = k === sortKey;
+  return (
+    <th className="px-3 py-2 font-medium select-none">
+      <button
+        onClick={() => onSort(k)}
+        className={
+          "inline-flex items-center gap-1 hover:text-ink transition " +
+          (active ? "text-ink" : "")
+        }
+        title={`Sort by ${label.toLowerCase()}`}
+      >
+        {label}
+        <span
+          className={"text-[9px] " + (active ? "opacity-100" : "opacity-0")}
+          aria-hidden
+        >
+          {asc ? "▲" : "▼"}
+        </span>
+      </button>
+    </th>
+  );
 }

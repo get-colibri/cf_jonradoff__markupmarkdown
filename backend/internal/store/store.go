@@ -388,6 +388,44 @@ func (s *Store) CompleteReviewRequestsForReviewer(ctx context.Context, docID, us
 	return matched, nil
 }
 
+// ListPendingAutoReviewCandidates returns pending token-targeted
+// requests the auto-reviewer sweep should consider: never attempted,
+// or last attempted more than a day ago. The per-request claim
+// happens in ClaimAutoReviewAttempt.
+func (s *Store) ListPendingAutoReviewCandidates(ctx context.Context) ([]models.ReviewRequest, error) {
+	cutoff := time.Now().UTC().Add(-24 * time.Hour)
+	return s.listReviewRequests(ctx, bson.M{
+		"state":             string(models.ReviewRequestPending),
+		"reviewer_token_id": bson.M{"$exists": true, "$ne": ""},
+		"$or": []bson.M{
+			{"auto_attempted_at": bson.M{"$exists": false}},
+			{"auto_attempted_at": bson.M{"$lt": cutoff}},
+		},
+	})
+}
+
+// ClaimAutoReviewAttempt stamps auto_attempted_at IF the request is
+// still pending and not recently attempted — the atomic claim that
+// keeps the enqueue path and the sweep from double-fulfilling, and
+// caps retries at one per day. Returns true when this caller won.
+func (s *Store) ClaimAutoReviewAttempt(ctx context.Context, id string) (bool, error) {
+	cutoff := time.Now().UTC().Add(-24 * time.Hour)
+	res, err := s.ReviewRequests().UpdateOne(ctx,
+		bson.M{
+			"_id":   id,
+			"state": string(models.ReviewRequestPending),
+			"$or": []bson.M{
+				{"auto_attempted_at": bson.M{"$exists": false}},
+				{"auto_attempted_at": bson.M{"$lt": cutoff}},
+			},
+		},
+		bson.M{"$set": bson.M{"auto_attempted_at": time.Now().UTC()}})
+	if err != nil {
+		return false, err
+	}
+	return res.ModifiedCount > 0, nil
+}
+
 // ReviewSubscriptionID is the deterministic composite _id for a
 // standing-reviewer subscription: rootDocID:reviewerKey.
 func ReviewSubscriptionID(rootDocID, reviewerKey string) string {

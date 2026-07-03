@@ -29,6 +29,11 @@ func generateToken() (plaintext, hash, prefix string) {
 
 type createTokenRequest struct {
 	Label string `json:"label"`
+	// AutoReview opts the token into backend-fulfilled reviews: review
+	// requests targeting it are answered by the server itself (Claude,
+	// billed to the owner's stored Anthropic key) instead of waiting
+	// for an external agent to poll.
+	AutoReview bool `json:"autoReview,omitempty"`
 	// Scope must be one of read/write/admin. Empty defaults to "write" for
 	// agent-style use cases (read + comment).
 	Scope string `json:"scope,omitempty"`
@@ -39,8 +44,9 @@ type createTokenRequest struct {
 }
 
 type updateTokenRequest struct {
-	Label *string `json:"label,omitempty"`
-	Scope *string `json:"scope,omitempty"`
+	Label      *string `json:"label,omitempty"`
+	Scope      *string `json:"scope,omitempty"`
+	AutoReview *bool   `json:"autoReview,omitempty"`
 }
 
 // tokenScopeDefault is what a token gets if the caller omits the field.
@@ -128,10 +134,11 @@ func (a *API) createToken(w http.ResponseWriter, r *http.Request) {
 		UserID:    user.ID,
 		Hash:      hash,
 		Prefix:    prefix,
-		Label:     label,
-		Scope:     scope,
-		CreatedAt: now,
-		ExpiresAt: expiresAt,
+		Label:      label,
+		Scope:      scope,
+		AutoReview: req.AutoReview,
+		CreatedAt:  now,
+		ExpiresAt:  expiresAt,
 	}
 	if err := a.store.InsertAPIToken(r.Context(), rec); err != nil {
 		internalError(w, "store.insert_token", err)
@@ -166,7 +173,7 @@ func (a *API) updateToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if req.Label == nil && req.Scope == nil {
+	if req.Label == nil && req.Scope == nil && req.AutoReview == nil {
 		writeError(w, http.StatusBadRequest, "nothing to update")
 		return
 	}
@@ -210,6 +217,9 @@ func (a *API) updateToken(w http.ResponseWriter, r *http.Request) {
 		if scope != existing.Scope {
 			set["scope"] = scope
 		}
+	}
+	if req.AutoReview != nil && *req.AutoReview != existing.AutoReview {
+		set["auto_review"] = *req.AutoReview
 	}
 
 	if len(set) == 0 {

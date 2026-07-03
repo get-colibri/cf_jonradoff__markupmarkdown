@@ -190,6 +190,7 @@ type adminRecentDoc struct {
 	CommentCount int64     `json:"commentCount"`
 	IsRevision   bool      `json:"isRevision"`
 	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 // adminRecentPublicDocs is GET /api/admin/recent-public-docs?limit=N.
@@ -206,7 +207,7 @@ func (a *API) adminRecentPublicDocs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	cur, err := a.store.Documents().Find(ctx,
 		bson.M{"deleted_at": bson.M{"$exists": false}, "private": false},
-		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(limit))
+		options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}}).SetLimit(limit))
 	if err != nil {
 		internalError(w, "admin.recent_public", err)
 		return
@@ -263,6 +264,7 @@ func (a *API) adminRecentPublicDocs(w http.ResponseWriter, r *http.Request) {
 			CommentCount: counts[d.ID],
 			IsRevision:   d.ParentID != "",
 			CreatedAt:    d.CreatedAt,
+			UpdatedAt:    d.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

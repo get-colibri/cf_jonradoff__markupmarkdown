@@ -265,6 +265,10 @@ A `ReviewRequest` targets a human (`reviewer_user_id`) XOR an agent token (`revi
 
 `/SKILL.md` is served from a go:embed of `backend/internal/api/skill.md` — a COPY of the canonical `skills/markupmarkdown/SKILL.md` (go:embed can't reach outside the package). After editing the canonical file, run `cp skills/markupmarkdown/SKILL.md backend/internal/api/skill.md`. `TestEmbeddedSkillMatchesCanonical` fails the build when they drift — that test exists because the copy silently went stale for a month and agents were reading pre-P0 docs.
 
+### 22. Auto-review runs in-process, claims atomically, and never loops
+
+Auto-review tokens ([autoreview.go](backend/internal/api/autoreview.go)) are fulfilled by a single worker goroutine: fast path = enqueue channel at request-mint, crash recovery = 10-minute sweep. The order of guards in `processAutoReview` is load-bearing: cheap state checks → key check (leaves the request unclaimed so an external agent could still take it) → rate limit (unclaimed, sweep retries) → `ClaimAutoReviewAttempt` (atomic, one attempt per request per 24h) → Claude → apply. A Claude failure AFTER the claim deliberately burns the attempt — never retry a failing doc in a loop on someone else's API bill. All writes go through `AddSuggestion` / `SetReviewState` with the token identity so badges, gates, and implicit fulfillment behave exactly as if an external agent did it.
+
 ## Operational notes
 
 These are properties of the running system that won't show up in code review but are worth knowing before scaling or debugging:

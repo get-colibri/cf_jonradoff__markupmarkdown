@@ -48,6 +48,7 @@ export default function TokensModal({ onClose }: Props) {
   const [label, setLabel] = useState("");
   const [scope, setScope] = useState<TokenScope>("write");
   const [expiresInDays, setExpiresInDays] = useState<number>(90);
+  const [autoReview, setAutoReview] = useState(false);
   const [created, setCreated] = useState<CreatedTokenResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export default function TokensModal({ onClose }: Props) {
     setError(null);
     try {
       const out = await api.createToken({
+        autoReview,
         label: label.trim(),
         scope,
         expiresInDays,
@@ -259,6 +261,21 @@ export default function TokensModal({ onClose }: Props) {
           >
             {busy ? "Generating…" : "Generate token"}
           </button>
+          <label
+            className="basis-full flex items-center gap-2 text-xs text-muted cursor-pointer mt-1"
+            title="Review requests targeting this token are fulfilled by the server itself — Claude reviews the doc, leaves suggestions, and sets a review state. Billed to your stored Anthropic key."
+          >
+            <input
+              type="checkbox"
+              checked={autoReview}
+              onChange={(e) => setAutoReview(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-ink">Auto-review</span> — the
+              server fulfills review requests to this token automatically
+              (uses your Anthropic key)
+            </span>
+          </label>
         </div>
       )}
 

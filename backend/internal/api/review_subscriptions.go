@@ -204,6 +204,10 @@ func (a *API) fanOutRevisionEvents(newDoc *models.Document, authorUserID, author
 				_, _ = httperr.Log("review_subscriptions.fanout", err)
 				continue
 			}
+			// Auto-review tokens: the backend fulfills immediately.
+			if sub.ReviewerTokenID != "" {
+				a.enqueueAutoReview(rr.ID, sub.ReviewerTokenID)
+			}
 			// Human subscribers get a bell notification; agents poll.
 			if sub.ReviewerUserID != "" {
 				n := &models.Notification{

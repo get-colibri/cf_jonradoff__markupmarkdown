@@ -91,6 +91,7 @@ export interface AdminRecentDoc {
   commentCount: number;
   isRevision: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface NotificationItem {
@@ -442,6 +443,9 @@ export interface APIToken {
   prefix: string;
   label: string;
   scope: TokenScope;
+  /** Server-fulfilled reviews: requests targeting this token are
+   * answered by the backend itself (Claude on your Anthropic key). */
+  autoReview?: boolean;
   createdAt: string;
   expiresAt?: string;
   lastUsedAt?: string;

@@ -108,9 +108,12 @@ func (a *API) createReviewRequest(w http.ResponseWriter, r *http.Request) {
 		a.logTokenAction(r.Context(), info.TokenID, "review_request.create", doc.ID)
 	}
 
-	// Humans get a bell notification. Agent tokens poll — no push.
+	// Humans get a bell notification. Agent tokens poll — no push —
+	// except auto-review tokens, which the backend fulfills itself.
 	if rr.ReviewerUserID != "" {
 		a.notifyReviewRequest(rr, user)
+	} else {
+		a.enqueueAutoReview(rr.ID, rr.ReviewerTokenID)
 	}
 	a.hub.Broadcast(doc.ID, "reviews-updated")
 	writeJSON(w, http.StatusCreated, rr)

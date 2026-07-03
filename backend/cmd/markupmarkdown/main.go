@@ -78,6 +78,7 @@ func main() {
 	}
 	a.Register(r)
 	a.StartPurgeSweep()
+	a.StartAutoReviewWorker()
 
 	// MCP server for agents: streamable HTTP transport, Bearer-token auth.
 	mcpHandler := mcpserver.New(a, st, cfg.Frontend.URL)

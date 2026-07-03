@@ -397,7 +397,17 @@ function RequestReviewMenu({
                     <span className="w-5 h-5 rounded-md bg-accent text-accent-fg flex items-center justify-center text-[10px]">
                       ⚙
                     </span>
-                    <span className="truncate flex-1">{tk.label}</span>
+                    <span className="truncate flex-1">
+                      {tk.label}
+                      {tk.autoReview && (
+                        <span
+                          className="ml-1 text-[10px] text-accent"
+                          title="Auto-review: the server fulfills requests to this token instantly"
+                        >
+                          ⚡
+                        </span>
+                      )}
+                    </span>
                     {subscribed ? (
                       <span className="text-[10px] text-faint">standing</span>
                     ) : requested ? (
