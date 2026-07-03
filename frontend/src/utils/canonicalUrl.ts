@@ -15,6 +15,7 @@ const RESERVED_TOP = new Set<string>([
   "d",
   "i",
   "gist",
+  "admin",
   "api",
   "favicon.svg",
   "robots.txt",

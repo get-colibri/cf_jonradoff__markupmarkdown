@@ -53,6 +53,46 @@ export interface ReviewSubscription {
   createdAt: string;
 }
 
+/** Admin console shapes (superuser only). */
+export interface AdminDayCount {
+  day: string;
+  count: number;
+}
+export interface AdminAgentAction {
+  action: string;
+  documentId?: string;
+  at: string;
+}
+export interface AdminOverview {
+  users: number;
+  usersThisWeek: number;
+  usersThisMonth: number;
+  agentTokens: number;
+  docsLive: number;
+  docsTrashed: number;
+  docsPublic: number;
+  docsPrivate: number;
+  docsRevisions: number;
+  indexes: number;
+  comments: number;
+  reviewsApproved: number;
+  reviewsChanges: number;
+  reviewsCommented: number;
+  suggestionsMade: number;
+  suggestionsUsed: number;
+  docsPerDay: AdminDayCount[];
+  recentAgentActions: AdminAgentAction[];
+}
+export interface AdminRecentDoc {
+  id: string;
+  title: string;
+  sourceUrl?: string;
+  createdBy?: string;
+  commentCount: number;
+  isRevision: boolean;
+  createdAt: string;
+}
+
 export interface NotificationItem {
   id: string;
   kind: "mention" | "reply" | "review_request" | "review_state";

@@ -126,6 +126,11 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/documents/{id}/reviewers", a.listReviewSubscriptions).Methods("GET")
 	r.HandleFunc("/api/review-subscriptions/{id}", a.deleteReviewSubscription).Methods("DELETE")
 
+	// Superuser console. Gated by MARKUPMARKDOWN_ADMIN_LOGINS (env
+	// allowlist of GitHub logins), cookie-session only — see admin.go.
+	r.HandleFunc("/api/admin/overview", a.adminOverviewHandler).Methods("GET")
+	r.HandleFunc("/api/admin/recent-public-docs", a.adminRecentPublicDocs).Methods("GET")
+
 	// Agent-proposed revision acceptance (P0-3). Human-only endpoint —
 	// pushback refuses to ship an agent-authored revision until it's
 	// been explicitly accepted here.

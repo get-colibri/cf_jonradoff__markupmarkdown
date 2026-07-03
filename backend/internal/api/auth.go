@@ -149,6 +149,13 @@ func (a *API) authMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"user": nil})
 		return
 	}
+	// isAdmin lets the SPA show the Admin link in the avatar menu.
+	// Cosmetic only — every /api/admin/* handler re-checks the
+	// allowlist server-side (and 404s to non-admins).
+	if isAdminUser(u) {
+		writeJSON(w, http.StatusOK, map[string]any{"user": u, "isAdmin": true})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": u})
 }
 

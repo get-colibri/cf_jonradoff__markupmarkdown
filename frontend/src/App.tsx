@@ -1,5 +1,6 @@
 import { Link, Route, Routes } from "react-router-dom";
 import HomePage from "./pages/Home";
+import AdminPage from "./pages/Admin";
 import DocumentPage from "./pages/Document";
 import IndexPage from "./pages/Index";
 import GitHubResolve from "./pages/GitHubResolve";
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/d/:id" element={<DocumentPage />} />
           <Route path="/i/:id" element={<IndexPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           {/* Human-readable GitHub URL routes. Ordered most-specific
               first so /:owner/:repo/blob/:ref/* matches before the
               shorter prefixes. The leading literals `d`, `i`, and

@@ -16,6 +16,8 @@ import type {
   PatchAnchorRequest,
   PushbackInfo,
   PushbackResult,
+  AdminOverview,
+  AdminRecentDoc,
   Review,
   ReviewRequest,
   ReviewState,
@@ -76,7 +78,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   authConfig: () => req<AuthConfig>("/api/auth/config"),
-  authMe: () => req<{ user: AuthUser | null }>("/api/auth/me"),
+  authMe: () => req<{ user: AuthUser | null; isAdmin?: boolean }>("/api/auth/me"),
   authLogout: () =>
     req<void>("/api/auth/logout", { method: "POST" }),
 
@@ -570,6 +572,11 @@ export const api = {
   /** Dismiss a pending request (reviewer or requester only). */
   dismissReviewRequest: (id: string) =>
     req<void>(`/api/review-requests/${id}/dismiss`, { method: "POST" }),
+
+  // --- Admin console (superuser only; see backend admin.go) ---
+  adminOverview: () => req<AdminOverview>("/api/admin/overview"),
+  adminRecentPublicDocs: (limit = 50) =>
+    req<AdminRecentDoc[]>(`/api/admin/recent-public-docs?limit=${limit}`),
 
   // --- P0-2: Suggested changes ---
   /** Apply the suggestion attached to a comment. Creates a manual

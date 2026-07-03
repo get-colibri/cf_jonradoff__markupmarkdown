@@ -4,6 +4,7 @@ import type { AuthUser } from "./types";
 
 interface AuthContextValue {
   user: AuthUser | null;
+  isAdmin: boolean;
   githubEnabled: boolean;
   githubClientId?: string;
   loading: boolean;
@@ -17,6 +18,7 @@ const Ctx = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [githubEnabled, setGithubEnabled] = useState(false);
   const [githubClientId, setGithubClientId] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setGithubEnabled(cfg.githubEnabled);
       setGithubClientId(cfg.githubClientId);
       setUser(me.user);
+      setIsAdmin(Boolean(me.isAdmin));
     } catch {
       // best-effort
     } finally {
@@ -41,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await api.authLogout();
     setUser(null);
+    setIsAdmin(false);
   }, []);
 
   const loginURL = useCallback(
@@ -59,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       user,
+      isAdmin,
       githubEnabled,
       githubClientId,
       loading,
@@ -67,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginURL,
       manageGitHubURL,
     }),
-    [user, githubEnabled, githubClientId, loading, refresh, logout, loginURL, manageGitHubURL]
+    [user, isAdmin, githubEnabled, githubClientId, loading, refresh, logout, loginURL, manageGitHubURL]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -7,7 +7,7 @@ import APIKeyModal from "./APIKeyModal";
 import TokensModal from "./TokensModal";
 
 export default function AuthorBadge() {
-  const { user, githubEnabled, logout, loginURL, manageGitHubURL } = useAuth();
+  const { user, isAdmin, githubEnabled, logout, loginURL, manageGitHubURL } = useAuth();
   const [name, setName] = useState(getAuthor());
   const [open, setOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -111,6 +111,15 @@ export default function AuthorBadge() {
               >
                 Personal access tokens
               </button>
+              {isAdmin && (
+                <a
+                  href="/admin"
+                  className="block px-3 py-2 text-sm hover:bg-soft"
+                  title="Site usage console (superuser)"
+                >
+                  Admin console
+                </a>
+              )}
               <button
                 onClick={handleLogout}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-soft"
