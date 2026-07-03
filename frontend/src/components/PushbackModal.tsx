@@ -31,6 +31,15 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
   const [targetBranch, setTargetBranch] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Review gates (P0-1/P0-3). Seeded from pushbackInfo; can also flip
+  // on at submit time if a reviewer requested changes AFTER the modal
+  // loaded (the 409 race) — same banner either way.
+  const [changesRequested, setChangesRequested] = useState(false);
+  const [agentProposed, setAgentProposed] = useState(false);
+  const [force, setForce] = useState(false);
+  const [accepting, setAccepting] = useState(false);
+  const gated = changesRequested || agentProposed;
+
   const toast = useToast();
 
   useEffect(() => {
@@ -45,6 +54,8 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
         setPRTitle(data.suggestedPRTitle);
         setPRBody(data.suggestedPRBody);
         setTargetBranch(data.defaultBranch);
+        setChangesRequested(Boolean(data.changesRequested));
+        setAgentProposed(Boolean(data.agentProposed));
         // Default mode honors permissions: if direct isn't allowed,
         // force PR.
         if (!data.canPushDirect) setMode("pr");
@@ -64,6 +75,28 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
     };
   }, [doc.id]);
 
+  // One-click accept for an agent-proposed revision, inline in the
+  // modal — no detour back to the doc page. Clearing the flag also
+  // un-gates the submit button if this was the only active gate.
+  async function handleAcceptRevision() {
+    if (accepting) return;
+    setAccepting(true);
+    setError(null);
+    try {
+      await api.acceptAgentRevision(doc.id);
+      setAgentProposed(false);
+      toast.success("Revision accepted");
+    } catch (err) {
+      setError(
+        err instanceof APIError
+          ? err
+          : new APIError((err as Error).message || "Couldn't accept the revision")
+      );
+    } finally {
+      setAccepting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!info || submitting) return;
     setSubmitting(true);
@@ -76,6 +109,7 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
         targetBranch,
         prTitle: mode === "pr" ? prTitle : undefined,
         prBody: mode === "pr" ? prBody : undefined,
+        force: gated && force ? true : undefined,
       });
       onPushed(result);
       onClose();
@@ -87,11 +121,25 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
         toast.success(`Committed to ${result.branch} on ${info.owner}/${info.repo}`);
       }
     } catch (err) {
-      setError(
-        err instanceof APIError
-          ? err
-          : new APIError((err as Error).message || "Couldn't push to GitHub")
-      );
+      // The 409 race: a gate appeared after the modal loaded. Flip the
+      // matching banner on instead of showing a dead-end error — the
+      // user gets the same Accept / override affordances in place.
+      if (err instanceof APIError && err.kind === "changes_requested") {
+        setChangesRequested(true);
+        setForce(false);
+      } else if (
+        err instanceof APIError &&
+        err.kind === "agent_revision_not_accepted"
+      ) {
+        setAgentProposed(true);
+        setForce(false);
+      } else {
+        setError(
+          err instanceof APIError
+            ? err
+            : new APIError((err as Error).message || "Couldn't push to GitHub")
+        );
+      }
     } finally {
       setSubmitting(false);
     }
@@ -132,6 +180,51 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
                   {info.owner}/{info.repo}
                 </a>
               </div>
+
+              {/* Review gates. Rendered only when a gate is actually
+                  blocking — invisible otherwise. Accept resolves the
+                  agent gate in one click; the override checkbox is the
+                  escape hatch for both. */}
+              {agentProposed && (
+                <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 flex items-center justify-between gap-3">
+                  <div className="text-xs">
+                    <span className="font-medium">Agent-proposed revision.</span>{" "}
+                    <span className="text-muted">
+                      This content was written by an agent and hasn't been
+                      accepted yet.
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleAcceptRevision}
+                    disabled={accepting || submitting}
+                    className="shrink-0 text-xs px-3 py-1 rounded bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50"
+                  >
+                    {accepting ? "Accepting…" : "Accept revision"}
+                  </button>
+                </div>
+              )}
+              {changesRequested && (
+                <div className="rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs">
+                  <span className="font-medium">Changes requested.</span>{" "}
+                  <span className="text-muted">
+                    A reviewer has requested changes on this document.
+                    Address their feedback (or override below) before
+                    pushing.
+                  </span>
+                </div>
+              )}
+              {gated && (
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={force}
+                    onChange={(e) => setForce(e.target.checked)}
+                  />
+                  <span>
+                    Push anyway, overriding review gates
+                  </span>
+                </label>
+              )}
 
               {/* Mode selector — radio cards with pros/cons per option. */}
               <fieldset className="space-y-2">
@@ -253,7 +346,12 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={submitting || !commitMessage.trim() || (mode === "pr" && !branch.trim())}
+              disabled={
+                submitting ||
+                !commitMessage.trim() ||
+                (mode === "pr" && !branch.trim()) ||
+                (gated && !force)
+              }
               className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
             >
               {submitting
