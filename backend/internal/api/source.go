@@ -298,14 +298,14 @@ func (a *API) checkSourceNow(w http.ResponseWriter, r *http.Request) {
 	switch target.SourceKind {
 	case models.SourceKindGist:
 		if !a.checkGistSourceNow(ctx, doc, target) {
-			writeJSON(w, http.StatusOK, sourceCheckResponse(doc, target, true))
+			writeJSON(w, http.StatusOK, a.sourceCheckResponse(ctx, doc, target, true))
 			return
 		}
 	default:
 		// github_blob (or pre-migration empty kind that still has owner stamped).
 		owner, repo, ref, p, ok := deriveGitHubInfo(target)
 		if !ok {
-			writeJSON(w, http.StatusOK, sourceCheckResponse(doc, target, false))
+			writeJSON(w, http.StatusOK, a.sourceCheckResponse(ctx, doc, target, false))
 			return
 		}
 		sha, err := auth.FetchGitHubFileSHA(ctx, token, owner, repo, ref, p)
@@ -313,7 +313,7 @@ func (a *API) checkSourceNow(w http.ResponseWriter, r *http.Request) {
 			sha, err = auth.FetchGitHubFileSHA(ctx, "", owner, repo, ref, p)
 		}
 		if err != nil {
-			writeJSON(w, http.StatusOK, sourceCheckResponse(doc, target, true))
+			writeJSON(w, http.StatusOK, a.sourceCheckResponse(ctx, doc, target, true))
 			return
 		}
 		if target.SourceSHA == "" {
@@ -338,7 +338,7 @@ func (a *API) checkSourceNow(w http.ResponseWriter, r *http.Request) {
 	if updated == nil {
 		updated = target
 	}
-	writeJSON(w, http.StatusOK, sourceCheckResponse(doc, updated, false))
+	writeJSON(w, http.StatusOK, a.sourceCheckResponse(ctx, doc, updated, false))
 }
 
 // checkGistSourceNow is the synchronous gist-flavored sibling of the
@@ -395,11 +395,30 @@ func (a *API) checkGistSourceNow(ctx context.Context, current, target *models.Do
 // gets the same banner the root would. rootDocument lets the frontend
 // link an "Open original" action when the current doc isn't itself
 // the root.
-func sourceCheckResponse(current, target *models.Document, failed bool) map[string]any {
+func (a *API) sourceCheckResponse(ctx context.Context, current, target *models.Document, failed bool) map[string]any {
+	latest := target.SourceLatestSHA
+	driftedAt := target.SourceDriftedAt
+	// Same suppressions getDocument applies — this endpoint feeds the
+	// SAME banner via the focus-triggered client check, and skipping
+	// them here resurrected a suppressed banner on tab refocus (live
+	// report 2026-07-03, WINGMAN_PRD):
+	//  1. The viewed doc's own baseline matches upstream (it was
+	//     created FROM that upstream) → no drift for this doc.
+	//  2. The chain's latest revision matches upstream (pushback
+	//     re-baselines the pushed doc) → the "upstream change" is the
+	//     chain's own doing; nobody in the chain should nag.
+	if latest != "" {
+		if current.SourceSHA != "" && current.SourceSHA == latest {
+			latest, driftedAt = "", nil
+		} else if leaf, _ := a.store.LatestDescendant(ctx, current.ID); leaf != nil &&
+			leaf.ID != current.ID && leaf.SourceSHA == latest {
+			latest, driftedAt = "", nil
+		}
+	}
 	out := map[string]any{
 		"sourceSha":             target.SourceSHA,
-		"sourceLatestSha":       target.SourceLatestSHA,
-		"sourceDriftedAt":       target.SourceDriftedAt,
+		"sourceLatestSha":       latest,
+		"sourceDriftedAt":       driftedAt,
 		"sourceDriftIgnoredSha": target.SourceDriftIgnoredSHA,
 	}
 	if failed {
@@ -568,7 +587,7 @@ func (a *API) ignoreDriftSource(w http.ResponseWriter, r *http.Request) {
 	if updatedTarget == nil {
 		updatedTarget = updated
 	}
-	writeJSON(w, http.StatusOK, sourceCheckResponse(updated, updatedTarget, false))
+	writeJSON(w, http.StatusOK, a.sourceCheckResponse(r.Context(), updated, updatedTarget, false))
 }
 
 // syncDocumentSource implements POST /api/documents/:id/sync. Re-fetches

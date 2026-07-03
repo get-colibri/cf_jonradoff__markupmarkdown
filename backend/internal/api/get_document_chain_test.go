@@ -181,3 +181,38 @@ func TestGetDocument_RootDriftSuppressedWhenLeafInSync(t *testing.T) {
 		t.Errorf("root still advertises drift its own chain reconciled: %s", body)
 	}
 }
+
+// The focus-triggered check-source endpoint must apply the SAME chain
+// suppression as getDocument — without it, a suppressed banner
+// resurrected on tab refocus (live report 2026-07-03, WINGMAN_PRD).
+func TestCheckSource_ChainSuppression(t *testing.T) {
+	srv, st, a := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	root := testutil.NewTestDocument(t, st, user.ID, "v1\n")
+	child, err := a.EditDocument(context.Background(), user.ID, root.ID, "v2\n", "", "")
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	for id, set := range map[string]bson.M{
+		root.ID:  {"source_sha": "old", "source_latest_sha": "pushed"},
+		child.ID: {"source_sha": "pushed"},
+	} {
+		if _, err := st.Documents().UpdateOne(context.Background(),
+			bson.M{"_id": id}, bson.M{"$set": set}); err != nil {
+			t.Fatalf("stamp %s: %v", id, err)
+		}
+	}
+
+	// Check-source on BOTH chain nodes must report no drift.
+	for _, docID := range []string{root.ID, child.ID} {
+		status, body := doJSON(t, srv, "POST",
+			"/api/documents/"+docID+"/check-source", nil, withCookie(sess))
+		if status != 200 {
+			t.Fatalf("doc %s status=%d body=%s", docID, status, body)
+		}
+		if strings.Contains(string(body), `"sourceLatestSha":"pushed"`) {
+			t.Errorf("check-source on %s resurrects suppressed drift: %s", docID, body)
+		}
+	}
+}
