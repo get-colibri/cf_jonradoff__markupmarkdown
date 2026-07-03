@@ -143,3 +143,41 @@ func TestGetDocument_ChildDriftOverlay(t *testing.T) {
 		t.Errorf("child in sync with upstream still shows drift: %s", body)
 	}
 }
+
+// Chain-level drift suppression: when the chain's LATEST revision
+// already matches the current upstream SHA (e.g. it was pushed back,
+// which re-baselines the pushed doc), OLDER revisions must not nag
+// about an "upstream change" the chain itself produced. Reported live
+// 2026-07-03 on WINGMAN_PRD.md after a merge+push cycle.
+func TestGetDocument_RootDriftSuppressedWhenLeafInSync(t *testing.T) {
+	srv, st, a := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	root := testutil.NewTestDocument(t, st, user.ID, "v1\n")
+	child, err := a.EditDocument(context.Background(), user.ID, root.ID, "v2\n", "", "")
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+
+	// Root drifted to upstream "pushed"; the leaf was pushed back and
+	// re-baselined to that same SHA.
+	for id, set := range map[string]bson.M{
+		root.ID:  {"source_sha": "old", "source_latest_sha": "pushed"},
+		child.ID: {"source_sha": "pushed"},
+	} {
+		if _, err := st.Documents().UpdateOne(context.Background(),
+			bson.M{"_id": id}, bson.M{"$set": set}); err != nil {
+			t.Fatalf("stamp %s: %v", id, err)
+		}
+	}
+
+	// The ROOT must not carry drift in its response — its chain is
+	// current with upstream.
+	status, body := doJSON(t, srv, "GET", "/api/documents/"+root.ID, nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if strings.Contains(string(body), `"sourceLatestSha":"pushed"`) {
+		t.Errorf("root still advertises drift its own chain reconciled: %s", body)
+	}
+}

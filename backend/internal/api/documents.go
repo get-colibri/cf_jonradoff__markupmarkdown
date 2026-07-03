@@ -584,6 +584,21 @@ func (a *API) getDocument(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// Chain-level suppression: if the chain's LATEST revision already
+	// matches the current upstream SHA, the "upstream change" is the
+	// chain's own doing (pushback re-baselines the pushed doc) or has
+	// already been reconciled. Older revisions in the chain should
+	// show the ordinary "you're on v1 of N" breadcrumb — not a merge
+	// nag about content a newer sibling already carries.
+	if resp.Document.SourceLatestSHA != "" {
+		if leaf, _ := a.store.LatestDescendant(r.Context(), doc.ID); leaf != nil &&
+			leaf.ID != doc.ID && leaf.SourceSHA == resp.Document.SourceLatestSHA {
+			cleared := *resp.Document
+			cleared.SourceLatestSHA = ""
+			cleared.SourceDriftedAt = nil
+			resp.Document = &cleared
+		}
+	}
 	// Read prior view BEFORE bumping it, so the response reflects the
 	// state the user is about to see (unread = new since last visit).
 	if u := a.currentUser(r); u != nil {
