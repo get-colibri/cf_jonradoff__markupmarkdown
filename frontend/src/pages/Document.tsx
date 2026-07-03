@@ -45,6 +45,7 @@ export default function DocumentPage() {
   const { user } = useAuth();
   const dialog = useDialog();
   const toast = useToast();
+  const [applyingAll, setApplyingAll] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [showSignIn, setShowSignIn] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
@@ -954,6 +955,35 @@ export default function DocumentPage() {
       throw err;
     }
   }
+  async function handleApplyAllSuggestions() {
+    if (!id || applyingAll) return;
+    const n = comments.filter(
+      (c) => !c.resolved && c.suggestion && !c.suggestion.appliedAt
+    ).length;
+    const ok = await dialog.confirm({
+      title: `Apply ${n} suggested changes?`,
+      body:
+        "All open suggestions apply top-down in one new revision. " +
+        "Any suggestion whose text conflicts with an earlier one is " +
+        "skipped and stays open.",
+      confirmLabel: "Apply all",
+    });
+    if (!ok) return;
+    setApplyingAll(true);
+    try {
+      const res = await api.applyAllSuggestions(id);
+      const skippedNote =
+        res.skipped.length > 0 ? ` (${res.skipped.length} skipped)` : "";
+      toast.success(
+        `Applied ${res.applied.length} suggestions${skippedNote}`
+      );
+      navigate(`/d/${res.document.id}`);
+    } catch (err) {
+      toastError(err, "Couldn't apply the suggestions.");
+    } finally {
+      setApplyingAll(false);
+    }
+  }
   async function handleReply(c: Comment, body: string) {
     const author = user?.name || user?.login || getAuthor() || "Anonymous";
     try {
@@ -1054,6 +1084,9 @@ export default function DocumentPage() {
 
   const openCount = comments.filter((c) => !c.resolved).length;
   const resolvedCount = comments.filter((c) => c.resolved).length;
+  const openSuggestionCount = comments.filter(
+    (c) => !c.resolved && c.suggestion && !c.suggestion.appliedAt
+  ).length;
   const unreadCount = comments.filter(isUnread).length;
   // Drift is present when upstream's latest SHA differs from our
   // baseline AND the user hasn't explicitly dismissed *this* SHA. The
@@ -1467,6 +1500,23 @@ export default function DocumentPage() {
               </FilterButton>
             </div>
           </div>
+          {/* Batch apply: appears only when 2+ open suggestions exist.
+              One click, one confirm, one revision — the "accept the
+              agent's whole review" gesture. */}
+          {openSuggestionCount >= 2 && user && (
+            <div className="px-4 pb-2 -mt-1 flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted">
+                {openSuggestionCount} suggested changes pending
+              </span>
+              <button
+                onClick={handleApplyAllSuggestions}
+                disabled={applyingAll}
+                className="px-2.5 py-1 rounded bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50 font-medium"
+              >
+                {applyingAll ? "Applying…" : "Apply all"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Prev/Next: its own sticky bar that floats above the

@@ -6,7 +6,22 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Suggestion diff preview.** Suggested changes render as a
+  tracked-changes inline word diff (removed words struck in red,
+  insertions in green) with a Changes/Result toggle — you read the
+  proposal in one pass instead of eyeballing two blocks.
+- **Apply all suggestions.** When 2+ open suggestions exist, a batch
+  affordance appears in the comments header: one confirm, one new
+  revision applying every suggestion top-down in document order.
+  Conflicting suggestions (anchor consumed by an earlier one) are
+  skipped, reported, and stay open. `POST /api/documents/:id/apply-suggestions`.
+- **Exact-timestamp tooltips everywhere.** All user-facing timestamps
+  render through a semantic `<time>` element: friendly short dates
+  ("Jun 4", year only when not current) with the full local datetime
+  on hover ("June 4, 2026, 2:41 PM EDT"). Dates always use the
+  browser's local timezone — no setting needed.
 
 ## [0.5.0] — 2026-07-03
 

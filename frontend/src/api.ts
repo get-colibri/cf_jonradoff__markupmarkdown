@@ -587,6 +587,14 @@ export const api = {
     req<MdDocument>(`/api/comments/${commentId}/apply-suggestion`, {
       method: "POST",
     }),
+  /** Apply ALL open suggestions on a doc in one new revision.
+   * Returns the child doc + which comments applied/skipped. */
+  applyAllSuggestions: (documentId: string) =>
+    req<{
+      document: MdDocument;
+      applied: string[];
+      skipped: { commentId: string; reason: string }[];
+    }>(`/api/documents/${documentId}/apply-suggestions`, { method: "POST" }),
 
   // --- P0-3: Agent revision acceptance ---
   /** Human-only endpoint that flips revision_meta.accepted_at on an

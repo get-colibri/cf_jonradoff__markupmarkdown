@@ -186,3 +186,20 @@ function wordDiffLine(
   }
   return { fromSegs, toSegs };
 }
+
+/** Merged inline word-diff for suggestion previews: one continuous
+ * reading flow where removed words carry kind "removed" and inserted
+ * words carry "added". Unlike wordDiffLine (which splits into
+ * from/to tracks for side-by-side), this interleaves both so the
+ * suggestion reads like tracked changes in a doc. */
+export function inlineWordDiff(from: string, to: string): InlineSegment[] {
+  const parts = diffWordsWithSpace(from, to);
+  const out: InlineSegment[] = [];
+  for (const part of parts) {
+    out.push({
+      text: part.value,
+      kind: part.added ? "added" : part.removed ? "removed" : "same",
+    });
+  }
+  return out;
+}

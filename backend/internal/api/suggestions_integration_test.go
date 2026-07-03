@@ -137,3 +137,54 @@ func TestApplySuggestion_NoOpReplacementReturns400(t *testing.T) {
 		t.Errorf("status=%d want 400 for no-op replacement", status)
 	}
 }
+
+func TestApplyAllSuggestions_BatchesIntoOneRevision(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	doc := testutil.NewTestDocument(t, st, user.ID,
+		"# Title\n\nThe quick brown fox jumps over the lazy dog.\nA second sentence sits here.\n")
+
+	c1 := insertSuggestionComment(t, st, doc.ID, user.ID, "quick brown fox", "swift auburn hare")
+	c2 := insertSuggestionComment(t, st, doc.ID, user.ID, "second sentence", "closing sentence")
+	// A conflicting suggestion on text c1 already consumed — must skip.
+	c3 := insertSuggestionComment(t, st, doc.ID, user.ID, "quick brown", "slow red")
+
+	status, body := doJSON(t, srv, "POST",
+		"/api/documents/"+doc.ID+"/apply-suggestions", nil, withCookie(sess))
+	if status != 201 {
+		t.Fatalf("status=%d body=%s want 201", status, body)
+	}
+	// One revision containing BOTH applied replacements.
+	if !strings.Contains(string(body), "swift auburn hare") ||
+		!strings.Contains(string(body), "closing sentence") {
+		t.Errorf("expected both replacements in child, got %s", body)
+	}
+	// The conflicting one is reported skipped.
+	if !strings.Contains(string(body), c3.ID) {
+		t.Errorf("expected %s in skipped list, got %s", c3.ID, body)
+	}
+	// Applied comments stamped + resolved; skipped one untouched.
+	for _, id := range []string{c1.ID, c2.ID} {
+		got, _ := st.GetComment(context.Background(), id)
+		if got == nil || got.Suggestion.AppliedAt == nil || !got.Resolved {
+			t.Errorf("comment %s not stamped applied+resolved", id)
+		}
+	}
+	got3, _ := st.GetComment(context.Background(), c3.ID)
+	if got3 == nil || got3.Suggestion.AppliedAt != nil || got3.Resolved {
+		t.Errorf("skipped comment %s should remain open: %+v", c3.ID, got3)
+	}
+}
+
+func TestApplyAllSuggestions_NoneOpen(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	doc := testutil.NewTestDocument(t, st, user.ID, "hello world")
+	status, _ := doJSON(t, srv, "POST",
+		"/api/documents/"+doc.ID+"/apply-suggestions", nil, withCookie(sess))
+	if status != 400 {
+		t.Errorf("status=%d want 400 when no suggestions", status)
+	}
+}
