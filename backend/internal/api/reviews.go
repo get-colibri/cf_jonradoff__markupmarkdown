@@ -154,6 +154,11 @@ func (a *API) listReviews(w http.ResponseWriter, r *http.Request) {
 		internalError(w, "store.list_reviews", err)
 		return
 	}
+	if reviews == nil {
+		// A nil slice marshals to JSON null and crashes array
+		// consumers — always return [].
+		reviews = []models.Review{}
+	}
 	a.resolveReviewIdentities(r.Context(), reviews)
 	vid := a.viewerID(r)
 	for i := range reviews {

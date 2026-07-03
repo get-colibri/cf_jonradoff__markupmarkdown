@@ -137,3 +137,20 @@ func TestGetDocument_CarriesReviewSummary(t *testing.T) {
 		t.Errorf("expected myReview field, got %s", body)
 	}
 }
+
+func TestListReviews_EmptyReturnsArrayNotNull(t *testing.T) {
+	// Regression (live blank-page crash 2026-07-03): a doc with zero
+	// reviews returned JSON null; the SPA called .length on it and
+	// the whole doc page unmounted.
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	doc := testutil.NewTestDocument(t, st, user.ID, "no reviews here")
+	status, body := doJSON(t, srv, "GET", "/api/documents/"+doc.ID+"/reviews", nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("status=%d body=%s", status, body)
+	}
+	if strings.TrimSpace(string(body)) == "null" {
+		t.Fatal("empty review list must be [], not null")
+	}
+}

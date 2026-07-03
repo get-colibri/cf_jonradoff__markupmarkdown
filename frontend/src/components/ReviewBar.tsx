@@ -51,9 +51,11 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
           ),
         ]);
         if (cancelled) return;
-        setReviews(rv);
-        setPending(rq);
-        setSubs(sb);
+        // Defensive ?? [] — a JSON null from any endpoint must never
+        // reach .map/.length (blank-page crash, seen live 2026-07-03).
+        setReviews(rv ?? []);
+        setPending(rq ?? []);
+        setSubs(sb ?? []);
       } catch {
         // Non-critical decoration — the state buttons still work.
       }
