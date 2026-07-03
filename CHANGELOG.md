@@ -8,6 +8,50 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [0.4.0] — 2026-07-03
+
+Review requests: the coordination verb that makes reviewers summonable.
+
+### Added
+
+- **Review requests.** "Please review this" — targeting a human user
+  or one of your own agent tokens. Fulfillment is implicit: when the
+  reviewer sets a review state on the doc, any pending request they
+  hold auto-completes. No "submit review" step on either end.
+  - `POST /api/documents/:id/review-requests` (reviewerLogin XOR
+    tokenId, own-token guard), `GET /api/me/review-requests`,
+    `POST /api/review-requests/:id/dismiss`.
+  - New notification kinds: `review_request` ("X requested your
+    review on …") and `review_state` ("X approved / requested
+    changes") — the latter reaches completed-request requesters and
+    the doc owner.
+  - New MCP tool `list_review_requests` — the poll surface agents use
+    to learn they've been summoned. Humans get bell notifications;
+    agents poll at session start (SKILL.md documents the loop).
+  - UI: "Request review" popover in the ReviewBar (one click on a
+    person or agent), "Reviews requested of you" queue at the top of
+    the home page, bell rendering for both new kinds.
+- **Gate-aware pushback modal.** The P0 push gates now have a UX:
+  banners render when (and only when) a gate is blocking, the
+  agent-proposed banner carries an inline one-click Accept, an
+  override checkbox appears only while gated, and the 409 race
+  (reviewer requests changes after the modal loaded) flips the
+  banner on in place instead of dead-ending.
+
+### Fixed
+
+- **False drift banner on child revisions.** Two bugs in the
+  getDocument drift overlay: the root's Ignore state
+  (`source_drift_ignored_sha`) was never mirrored onto children, so a
+  dismissed banner re-fired on every revision; and a child whose own
+  baseline already matched the current upstream SHA (created FROM
+  that upstream via merge) still inherited the root's stale baseline
+  — manufacturing drift with nothing to merge.
+- **Served /SKILL.md was stale.** The go:embed points at a copy in
+  backend/internal/api/ that hadn't been synced since June 4 — agents
+  reading the live SKILL.md got pre-P0 docs. Synced, plus a test that
+  fails the build whenever the canonical and embedded copies drift.
+
 ## [0.3.0] — 2026-07-02
 
 Review-coordination release. The first batch of changes grounded in the

@@ -181,7 +181,7 @@ The agent passes the token as `Authorization: Bearer mmk_…` on REST and MCP ca
 
 ### MCP server
 
-Streamable HTTP transport at **`/mcp`**, built on [`github.com/mark3labs/mcp-go`](https://github.com/mark3labs/mcp-go). Authenticate every call with `Authorization: Bearer mmk_…`. Sixteen tools cover the same surface humans see in the web UI; every one routes through the same access checks, scope enforcement, validation, and rate-limit buckets as REST — there is no agent-only fast path.
+Streamable HTTP transport at **`/mcp`**, built on [`github.com/mark3labs/mcp-go`](https://github.com/mark3labs/mcp-go). Authenticate every call with `Authorization: Bearer mmk_…`. Seventeen tools cover the same surface humans see in the web UI; every one routes through the same access checks, scope enforcement, validation, and rate-limit buckets as REST — there is no agent-only fast path.
 
 #### Reading (`read` scope)
 
