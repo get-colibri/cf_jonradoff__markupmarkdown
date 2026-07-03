@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, APIError } from "../api";
-import type { DocumentSummary, MarkdownIndex, TrashItem } from "../types";
+import type {
+  DocumentSummary,
+  MarkdownIndex,
+  ReviewRequest,
+  TrashItem,
+} from "../types";
 import { formatRelative } from "../utils/format";
 import ErrorBlock from "../components/ErrorBlock";
 import { useDialog } from "../components/Dialogs";
@@ -37,6 +42,7 @@ export default function HomePage() {
   }, [searchParams, setSearchParams, toast]);
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [indexes, setIndexes] = useState<MarkdownIndex[] | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<ReviewRequest[]>([]);
   const [trash, setTrash] = useState<TrashItem[] | null>(null);
   const [showTrash, setShowTrash] = useState(false);
   const [error, setError] = useState<APIError | null>(null);
@@ -75,6 +81,22 @@ export default function HomePage() {
       setIndexes(idxs);
     } catch {
       setIndexes([]);
+    }
+    // Pending review requests targeting this user.
+    try {
+      const rq = await api.listMyReviewRequests();
+      setReviewQueue(rq);
+    } catch {
+      setReviewQueue([]);
+    }
+  }
+
+  async function dismissRequest(id: string) {
+    try {
+      await api.dismissReviewRequest(id);
+      setReviewQueue((q) => q.filter((r) => r.id !== id));
+    } catch (err) {
+      toast.error(toastMessageFor(err) || "Couldn't dismiss that request.");
     }
   }
 
@@ -280,6 +302,50 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {/* Pending review requests — the "someone is waiting on you"
+          queue. Above everything else because it's the only section
+          with another person blocked on it. */}
+      {user && reviewQueue.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">Reviews requested of you</h2>
+          <ul className="bg-card border border-rule rounded-lg divide-y divide-rule overflow-hidden">
+            {reviewQueue.map((rq) => (
+              <li
+                key={rq.id}
+                className="flex items-center justify-between gap-3 px-4 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <Link
+                    to={`/d/${rq.documentId}`}
+                    className="text-sm font-medium text-ink hover:text-accent"
+                  >
+                    {rq.documentTitle}
+                  </Link>
+                  <div className="text-xs text-muted mt-0.5">
+                    {rq.requesterName} asked {formatRelative(rq.createdAt)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link
+                    to={`/d/${rq.documentId}`}
+                    className="text-xs px-2.5 py-1 rounded bg-accent text-accent-fg hover:opacity-90"
+                  >
+                    Review
+                  </Link>
+                  <button
+                    onClick={() => dismissRequest(rq.id)}
+                    className="text-xs text-muted hover:text-ink"
+                    title="Dismiss without reviewing"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Indexes the signed-in user has created. Lives above the
           recent-docs list because a shared index is typically the

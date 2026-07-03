@@ -121,6 +121,9 @@ func (s *stubAPI) SetReviewState(_ context.Context, _, _, state, _, _ string) (*
 func (s *stubAPI) AddSuggestion(_ context.Context, _, _, _, _ string, _ int, replacement, _, _ string) (*models.Comment, error) {
 	return &models.Comment{Suggestion: &models.Suggestion{Replacement: replacement}}, nil
 }
+func (s *stubAPI) ListReviewRequests(_ context.Context, tokenID string) ([]models.ReviewRequest, error) {
+	return []models.ReviewRequest{{ReviewerTokenID: tokenID, State: models.ReviewRequestPending}}, nil
+}
 func (s *stubAPI) ValidateReviewState(state string) (models.ReviewState, error) {
 	switch models.ReviewState(state) {
 	case models.ReviewStateApproved, models.ReviewStateChangesRequested, models.ReviewStateCommented:

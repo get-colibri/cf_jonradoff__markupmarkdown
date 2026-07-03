@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, APIError } from "../api";
-import type { MdDocument, Review, ReviewState } from "../types";
+import { useAuth } from "../auth";
+import { useToast } from "./Toast";
+import type {
+  APIToken,
+  MdDocument,
+  MentionCandidate,
+  Review,
+  ReviewState,
+} from "../types";
 
 interface Props {
   doc: MdDocument;
@@ -81,8 +89,146 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
             </button>
           );
         })}
+        <RequestReviewMenu doc={doc} onError={onError} />
         {summary && <SummaryBadge summary={summary} myReview={my} />}
       </div>
+    </div>
+  );
+}
+
+/** "Request review" popover — one click on a person or agent creates
+ * the request. Candidates load lazily on first open: humans who've
+ * touched the doc (mention candidates, minus yourself) + your own
+ * agent tokens. No modal, no multi-step flow. */
+function RequestReviewMenu({
+  doc,
+  onError,
+}: {
+  doc: MdDocument;
+  onError: (err: APIError) => void;
+}) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [humans, setHumans] = useState<MentionCandidate[]>([]);
+  const [tokens, setTokens] = useState<APIToken[]>([]);
+  const [sending, setSending] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  async function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    if (humans.length || tokens.length || loading) return;
+    setLoading(true);
+    try {
+      const [cands, toks] = await Promise.all([
+        api.listMentionCandidates(doc.id),
+        api.listTokens().catch(() => [] as APIToken[]),
+      ]);
+      setHumans(cands.filter((c) => c.login !== user?.login));
+      setTokens(toks);
+    } catch (err) {
+      if (err instanceof APIError) onError(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function request(target: { reviewerLogin?: string; tokenId?: string }, label: string) {
+    if (sending) return;
+    setSending(true);
+    try {
+      await api.createReviewRequest(doc.id, target);
+      setOpen(false);
+      toast.success(`Review requested from ${label}`);
+    } catch (err) {
+      if (err instanceof APIError) onError(err);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const empty = !loading && humans.length === 0 && tokens.length === 0;
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        onClick={toggle}
+        className="px-2 py-1 rounded border border-rule text-muted hover:text-ink hover:border-ink transition"
+      >
+        Request review
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-30 w-60 max-h-72 overflow-auto rounded-md border border-rule bg-card shadow-lg py-1">
+          {loading && <div className="px-3 py-2 text-muted">Loading…</div>}
+          {empty && (
+            <div className="px-3 py-2 text-muted">
+              Nobody to ask yet — collaborators appear here once they've
+              opened this doc; agents once you've created a token.
+            </div>
+          )}
+          {humans.length > 0 && (
+            <>
+              <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide text-faint">
+                People
+              </div>
+              {humans.map((c) => (
+                <button
+                  key={c.login}
+                  disabled={sending}
+                  onClick={() =>
+                    request({ reviewerLogin: c.login }, c.name || c.login)
+                  }
+                  className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
+                >
+                  {c.avatarUrl ? (
+                    <img src={c.avatarUrl} alt="" className="w-5 h-5 rounded-full" />
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-soft" />
+                  )}
+                  <span className="truncate">{c.name || c.login}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {tokens.length > 0 && (
+            <>
+              <div className="px-3 pt-1.5 pb-0.5 text-[10px] uppercase tracking-wide text-faint">
+                Your agents
+              </div>
+              {tokens.map((tk) => (
+                <button
+                  key={tk.id}
+                  disabled={sending}
+                  onClick={() => request({ tokenId: tk.id }, tk.label)}
+                  className="w-full text-left px-3 py-1.5 hover:bg-soft flex items-center gap-2 disabled:opacity-50"
+                >
+                  <span className="w-5 h-5 rounded-md bg-accent text-accent-fg flex items-center justify-center text-[10px]">
+                    ⚙
+                  </span>
+                  <span className="truncate">{tk.label}</span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

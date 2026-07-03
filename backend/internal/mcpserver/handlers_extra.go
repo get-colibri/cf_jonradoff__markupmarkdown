@@ -324,3 +324,22 @@ func (h *handlers) setReviewState(ctx context.Context, req mcp.CallToolRequest) 
 		"actorKind":   rec.ActorKind,
 	})
 }
+
+// --- list_review_requests ---
+
+func listReviewRequestsTool() mcp.Tool {
+	return mcp.NewTool("list_review_requests",
+		mcp.WithDescription(`Return the PENDING review requests targeted at this token — docs a human has asked you to review. Poll this at the start of a session (or on a schedule) to learn you've been summoned.
+
+To fulfill a request: read the doc (get_document + list_comments), leave your feedback (add_comment / add_suggestion), then call set_review_state. Setting a review state on the doc automatically completes the request — there is no separate "done" call.`),
+	)
+}
+
+func (h *handlers) listReviewRequests(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	id, _ := identityFrom(ctx)
+	out, err := h.api.ListReviewRequests(ctx, id.TokenID)
+	if err != nil {
+		return errorResult("%s", err.Error())
+	}
+	return jsonResult(out)
+}

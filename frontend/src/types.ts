@@ -26,9 +26,26 @@ export interface OlderDocumentVersion {
   revisionCount?: number;
 }
 
+export type ReviewRequestState = "pending" | "completed" | "dismissed";
+
+/** "Please review this doc" — targets a human or one of your agent
+ * tokens. Auto-completes when the reviewer sets a review state on
+ * the doc; no explicit submit step. */
+export interface ReviewRequest {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  requesterName: string;
+  reviewerName: string;
+  reviewerTokenId?: string;
+  state: ReviewRequestState;
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface NotificationItem {
   id: string;
-  kind: "mention" | "reply";
+  kind: "mention" | "reply" | "review_request" | "review_state";
   documentId: string;
   documentTitle: string;
   commentId: string;

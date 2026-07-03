@@ -93,6 +93,12 @@ type API interface {
 	// proposed replacement so a reviewer can one-click apply it. Same
 	// scope + rate + validation as add_comment.
 	AddSuggestion(ctx context.Context, userID, docID, body, quotedText string, occurrence int, replacement, tokenID, agentLabel string) (*models.Comment, error)
+
+	// ListReviewRequests returns the pending review requests targeted
+	// at the calling token — the poll surface agents use to learn
+	// they've been summoned to review a doc. Fulfillment is implicit:
+	// set_review_state on the doc completes the request.
+	ListReviewRequests(ctx context.Context, tokenID string) ([]models.ReviewRequest, error)
 }
 
 // CommentAnchorOpts is the dual shape of PATCH /api/comments/:id/anchor:
@@ -202,6 +208,7 @@ func New(a API, _ *store.Store, siteURL string) http.Handler {
 	s.AddTool(deleteCommentTool(), h.deleteComment)
 	s.AddTool(setReviewStateTool(), h.setReviewState)
 	s.AddTool(addSuggestionTool(), h.addSuggestion)
+	s.AddTool(listReviewRequestsTool(), h.listReviewRequests)
 
 	httpServer := server.NewStreamableHTTPServer(s, server.WithStateLess(true))
 	return wrapAuth(httpServer, a)

@@ -77,7 +77,13 @@ export default function NotificationBell() {
         // the count — leave it alone; the next poll will reconcile.
       }
     }
-    navigate(`/d/${n.documentId}?comment=${n.commentId}`);
+    // Review notifications aren't tied to a comment — deep-link to
+    // the doc itself.
+    if (n.commentId) {
+      navigate(`/d/${n.documentId}?comment=${n.commentId}`);
+    } else {
+      navigate(`/d/${n.documentId}`);
+    }
   }
 
   async function markAllRead() {
@@ -159,7 +165,15 @@ export default function NotificationBell() {
                       <div className="flex-1 min-w-0 text-sm">
                         <div className="text-ink">
                           <strong className="font-medium">{n.actorName}</strong>{" "}
-                          {n.kind === "mention" ? "mentioned you in" : "replied in"}{" "}
+                          {n.kind === "mention"
+                            ? "mentioned you in"
+                            : n.kind === "review_request"
+                              ? "requested your review on"
+                              : n.kind === "review_state"
+                                ? // Preview carries the specific verb
+                                  // ("approved this document", …).
+                                  "reviewed"
+                                : "replied in"}{" "}
                           <span className="text-accent">{n.documentTitle}</span>
                         </div>
                         <div className="text-xs text-muted line-clamp-2 mt-0.5">

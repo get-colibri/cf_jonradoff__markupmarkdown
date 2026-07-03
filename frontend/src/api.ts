@@ -17,6 +17,7 @@ import type {
   PushbackInfo,
   PushbackResult,
   Review,
+  ReviewRequest,
   ReviewState,
   RevisionPreview,
   SelfDocRedirect,
@@ -528,6 +529,25 @@ export const api = {
    * MyReview — call this only when you need the full list. */
   listReviews: (documentId: string) =>
     req<Review[]>(`/api/documents/${documentId}/reviews`),
+
+  // --- Review requests (Phase 2a) ---
+  /** Ask a reviewer to look at this doc. Exactly one of reviewerLogin
+   * (a human) or tokenId (one of YOUR agent tokens) per call.
+   * Fulfillment is implicit: the request completes when the reviewer
+   * sets a review state. */
+  createReviewRequest: (
+    documentId: string,
+    target: { reviewerLogin?: string; tokenId?: string }
+  ) =>
+    req<ReviewRequest>(`/api/documents/${documentId}/review-requests`, {
+      method: "POST",
+      body: JSON.stringify(target),
+    }),
+  /** Pending review requests targeting the current identity. */
+  listMyReviewRequests: () => req<ReviewRequest[]>(`/api/me/review-requests`),
+  /** Dismiss a pending request (reviewer or requester only). */
+  dismissReviewRequest: (id: string) =>
+    req<void>(`/api/review-requests/${id}/dismiss`, { method: "POST" }),
 
   // --- P0-2: Suggested changes ---
   /** Apply the suggestion attached to a comment. Creates a manual

@@ -147,6 +147,19 @@ func (a *API) SetReviewState(ctx context.Context, userID, docID, stateStr, note,
 	if err := a.store.UpsertReview(ctx, rec); err != nil {
 		return nil, sanitizeStoreErr("mcp.set_review.upsert", err)
 	}
+
+	// Implicit fulfillment, same as the REST path: an agent setting a
+	// review state completes any pending request targeting it (or its
+	// owner). The fan-out also pings the doc owner for unsolicited
+	// reviews (completed may be empty) — matches the REST behavior.
+	if completed, crErr := a.store.CompleteReviewRequestsForReviewer(ctx, docID, userID, tokenID); crErr == nil {
+		if doc, _ := a.store.GetDocument(ctx, docID); doc != nil {
+			if reviewer, _ := a.store.GetUser(ctx, userID); reviewer != nil {
+				a.fanOutReviewStateNotifications(doc, reviewer, state, completed)
+			}
+		}
+	}
+
 	a.hub.Broadcast(docID, "reviews-updated")
 	got, err := a.store.GetReview(ctx, docID, userID)
 	if err != nil {
@@ -158,6 +171,20 @@ func (a *API) SetReviewState(ctx context.Context, userID, docID, stateStr, note,
 	a.resolveReviewIdentities(ctx, []models.Review{*got})
 	got.Mine = true
 	return got, nil
+}
+
+// ListReviewRequests is the MCP poll surface: pending review requests
+// targeted at the calling token. See review_requests.go for the
+// delivery model (humans get bell notifications; agents poll).
+func (a *API) ListReviewRequests(ctx context.Context, tokenID string) ([]models.ReviewRequest, error) {
+	out, err := a.store.ListPendingReviewRequestsForToken(ctx, tokenID)
+	if err != nil {
+		return nil, sanitizeStoreErr("mcp.list_review_requests", err)
+	}
+	if out == nil {
+		out = []models.ReviewRequest{}
+	}
+	return out, nil
 }
 
 func (a *API) DocAccess(ctx context.Context, userID, docID, accessToken string) (*models.Document, error) {

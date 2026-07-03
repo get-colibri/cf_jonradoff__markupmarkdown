@@ -264,6 +264,45 @@ type ReviewSummary struct {
 	Commented        int `json:"commented"`
 }
 
+// ReviewRequestState is the lifecycle of a review request.
+type ReviewRequestState string
+
+const (
+	ReviewRequestPending   ReviewRequestState = "pending"
+	ReviewRequestCompleted ReviewRequestState = "completed"
+	ReviewRequestDismissed ReviewRequestState = "dismissed"
+)
+
+// ReviewRequest asks a specific reviewer — a human user OR one of the
+// requester's agent tokens — to review a doc. Exactly one of
+// ReviewerUserID / ReviewerTokenID is set. Fulfillment is implicit:
+// when the reviewer sets a review state on the doc, any pending
+// request they hold auto-completes (no explicit "submit review" step).
+//
+// The ID is deterministic (docID + ":" + reviewer key) so re-requesting
+// the same reviewer upserts rather than duplicating.
+type ReviewRequest struct {
+	ID         string             `bson:"_id" json:"id"`
+	DocumentID string             `bson:"document_id" json:"documentId"`
+	// Denormalized so the reviewer's queue can render without a join.
+	DocumentTitle string `bson:"document_title" json:"documentTitle"`
+
+	RequesterID   string `bson:"requester_id" json:"-"`
+	RequesterName string `bson:"requester_name" json:"requesterName"`
+
+	// Exactly one of these is set.
+	ReviewerUserID  string `bson:"reviewer_user_id,omitempty" json:"-"`
+	ReviewerTokenID string `bson:"reviewer_token_id,omitempty" json:"reviewerTokenId,omitempty"`
+	// Display name for the reviewer, resolved at write time (token
+	// label or user name). Re-resolved at read time for tokens so
+	// renames propagate.
+	ReviewerName string `bson:"reviewer_name" json:"reviewerName"`
+
+	State       ReviewRequestState `bson:"state" json:"state"`
+	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
+	CompletedAt *time.Time         `bson:"completed_at,omitempty" json:"completedAt,omitempty"`
+}
+
 // UserSecrets holds per-user encrypted credentials. One document per user.
 // Plaintext API keys never live in MongoDB.
 // NotificationKind enumerates what the user is being told about.
@@ -272,6 +311,12 @@ type NotificationKind string
 const (
 	NotifyMention NotificationKind = "mention"
 	NotifyReply   NotificationKind = "reply"
+	// NotifyReviewRequest: "X requested your review on <doc>".
+	NotifyReviewRequest NotificationKind = "review_request"
+	// NotifyReviewState: "X approved / requested changes on <doc>" —
+	// sent to the doc owner and any requester whose request just
+	// completed.
+	NotifyReviewState NotificationKind = "review_state"
 )
 
 // Notification is an in-app pulled-by-the-bell-icon record.

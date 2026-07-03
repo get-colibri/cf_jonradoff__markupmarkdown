@@ -112,6 +112,13 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/documents/{id}/review", a.deleteReview).Methods("DELETE")
 	r.HandleFunc("/api/documents/{id}/reviews", a.listReviews).Methods("GET")
 
+	// Review requests: ask a human or one of your agent tokens to
+	// review. Fulfillment is implicit via setReview (see
+	// review_requests.go for the delivery model).
+	r.HandleFunc("/api/documents/{id}/review-requests", a.createReviewRequest).Methods("POST")
+	r.HandleFunc("/api/me/review-requests", a.listMyReviewRequests).Methods("GET")
+	r.HandleFunc("/api/review-requests/{id}/dismiss", a.dismissReviewRequest).Methods("POST")
+
 	// Agent-proposed revision acceptance (P0-3). Human-only endpoint —
 	// pushback refuses to ship an agent-authored revision until it's
 	// been explicitly accepted here.

@@ -69,6 +69,7 @@ func (s *Store) Indexes() *mongo.Collection        { return s.db.Collection("ind
 func (s *Store) HiddenItems() *mongo.Collection    { return s.db.Collection("hidden_items") }
 func (s *Store) IndexItems() *mongo.Collection     { return s.db.Collection("index_items") }
 func (s *Store) Reviews() *mongo.Collection        { return s.db.Collection("reviews") }
+func (s *Store) ReviewRequests() *mongo.Collection { return s.db.Collection("review_requests") }
 
 func (s *Store) ensureIndexes(ctx context.Context) {
 	_, _ = s.Documents().Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -129,6 +130,13 @@ func (s *Store) ensureIndexes(ctx context.Context) {
 		// List by doc (rendered in the doc header / sidebar).
 		{Keys: bson.D{{Key: "document_id", Value: 1}}},
 		// Push-gate check: is any review on this doc in changes_requested?
+		{Keys: bson.D{{Key: "document_id", Value: 1}, {Key: "state", Value: 1}}},
+	})
+	_, _ = s.ReviewRequests().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		// The reviewer's pending queue (home page + MCP list tool).
+		{Keys: bson.D{{Key: "reviewer_user_id", Value: 1}, {Key: "state", Value: 1}, {Key: "created_at", Value: -1}}},
+		{Keys: bson.D{{Key: "reviewer_token_id", Value: 1}, {Key: "state", Value: 1}, {Key: "created_at", Value: -1}}},
+		// Auto-completion lookup when a review lands on a doc.
 		{Keys: bson.D{{Key: "document_id", Value: 1}, {Key: "state", Value: 1}}},
 	})
 }
@@ -224,6 +232,143 @@ func (s *Store) AnyChangesRequested(ctx context.Context, docID string) (bool, er
 		return false, err
 	}
 	return n > 0, nil
+}
+
+// ReviewRequestID returns the deterministic composite _id for a review
+// request: docID:reviewerKey. Re-requesting the same reviewer on the
+// same doc upserts (re-opens if dismissed) instead of duplicating.
+func ReviewRequestID(docID, reviewerKey string) string { return docID + ":" + reviewerKey }
+
+// UpsertReviewRequest creates-or-reopens a review request. A completed
+// or dismissed request flips back to pending with a fresh created_at —
+// "review this again" is the natural meaning of re-requesting.
+func (s *Store) UpsertReviewRequest(ctx context.Context, rr *models.ReviewRequest) error {
+	if rr.DocumentID == "" {
+		return fmt.Errorf("upsert review request: missing document_id")
+	}
+	key := rr.ReviewerUserID
+	if key == "" {
+		key = rr.ReviewerTokenID
+	}
+	if key == "" {
+		return fmt.Errorf("upsert review request: missing reviewer")
+	}
+	if rr.ID == "" {
+		rr.ID = ReviewRequestID(rr.DocumentID, key)
+	}
+	now := time.Now().UTC()
+	rr.CreatedAt = now
+	rr.State = models.ReviewRequestPending
+	_, err := s.ReviewRequests().UpdateOne(ctx,
+		bson.M{"_id": rr.ID},
+		bson.M{"$set": bson.M{
+			"document_id":       rr.DocumentID,
+			"document_title":    rr.DocumentTitle,
+			"requester_id":      rr.RequesterID,
+			"requester_name":    rr.RequesterName,
+			"reviewer_user_id":  rr.ReviewerUserID,
+			"reviewer_token_id": rr.ReviewerTokenID,
+			"reviewer_name":     rr.ReviewerName,
+			"state":             string(models.ReviewRequestPending),
+			"created_at":        now,
+			"completed_at":      nil,
+		}},
+		options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+// ListPendingReviewRequestsForUser returns the pending queue for a
+// human reviewer, newest first.
+func (s *Store) ListPendingReviewRequestsForUser(ctx context.Context, userID string) ([]models.ReviewRequest, error) {
+	return s.listReviewRequests(ctx, bson.M{
+		"reviewer_user_id": userID,
+		"state":            string(models.ReviewRequestPending),
+	})
+}
+
+// ListPendingReviewRequestsForToken returns the pending queue for an
+// agent token, newest first. This backs the MCP list_review_requests
+// tool — the poll surface agents use to learn they've been summoned.
+func (s *Store) ListPendingReviewRequestsForToken(ctx context.Context, tokenID string) ([]models.ReviewRequest, error) {
+	return s.listReviewRequests(ctx, bson.M{
+		"reviewer_token_id": tokenID,
+		"state":             string(models.ReviewRequestPending),
+	})
+}
+
+func (s *Store) listReviewRequests(ctx context.Context, filter bson.M) ([]models.ReviewRequest, error) {
+	cur, err := s.ReviewRequests().Find(ctx, filter,
+		options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}).SetLimit(100))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []models.ReviewRequest
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetReviewRequest fetches one request by ID, or nil.
+func (s *Store) GetReviewRequest(ctx context.Context, id string) (*models.ReviewRequest, error) {
+	var rr models.ReviewRequest
+	err := s.ReviewRequests().FindOne(ctx, bson.M{"_id": id}).Decode(&rr)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &rr, nil
+}
+
+// DismissReviewRequest marks a request dismissed. Only meaningful on
+// pending requests; dismissing a completed one is a harmless no-op.
+func (s *Store) DismissReviewRequest(ctx context.Context, id string) error {
+	_, err := s.ReviewRequests().UpdateOne(ctx,
+		bson.M{"_id": id, "state": string(models.ReviewRequestPending)},
+		bson.M{"$set": bson.M{"state": string(models.ReviewRequestDismissed)}})
+	return err
+}
+
+// CompleteReviewRequestsForReviewer flips any pending requests this
+// reviewer holds on a doc to completed. Called when a review state
+// lands — fulfillment is implicit, no explicit submit step. Matches
+// by user ID and (when the review came via a token) token ID.
+// Returns the completed requests so the caller can notify requesters.
+func (s *Store) CompleteReviewRequestsForReviewer(ctx context.Context, docID, userID, tokenID string) ([]models.ReviewRequest, error) {
+	or := []bson.M{{"reviewer_user_id": userID}}
+	if tokenID != "" {
+		or = append(or, bson.M{"reviewer_token_id": tokenID})
+	}
+	filter := bson.M{
+		"document_id": docID,
+		"state":       string(models.ReviewRequestPending),
+		"$or":         or,
+	}
+	matched, err := s.listReviewRequests(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	if len(matched) == 0 {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	for _, rr := range matched {
+		// Per-doc UpdateOne (not UpdateMany) so a bad filter can never
+		// spray writes beyond the rows we just enumerated.
+		_, err := s.ReviewRequests().UpdateOne(ctx,
+			bson.M{"_id": rr.ID, "state": string(models.ReviewRequestPending)},
+			bson.M{"$set": bson.M{
+				"state":        string(models.ReviewRequestCompleted),
+				"completed_at": now,
+			}})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return matched, nil
 }
 
 // HideItem marks an item as hidden from the user's personal lists.

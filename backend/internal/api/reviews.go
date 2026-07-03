@@ -93,6 +93,16 @@ func (a *API) setReview(w http.ResponseWriter, r *http.Request) {
 	if info, ok := tokenInfoFromRequest(r); ok {
 		a.logTokenAction(r.Context(), info.TokenID, "review."+string(state), doc.ID)
 	}
+
+	// Implicit fulfillment: setting a state completes any pending
+	// review request this reviewer holds on the doc — no separate
+	// "submit review" step. Requesters + the doc owner get notified.
+	completed, crErr := a.store.CompleteReviewRequestsForReviewer(
+		r.Context(), doc.ID, user.ID, rec.TokenID)
+	if crErr == nil {
+		a.fanOutReviewStateNotifications(doc, user, state, completed)
+	}
+
 	a.hub.Broadcast(doc.ID, "reviews-updated")
 
 	got, _ := a.store.GetReview(r.Context(), doc.ID, user.ID)
