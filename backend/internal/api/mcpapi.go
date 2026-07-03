@@ -168,9 +168,12 @@ func (a *API) SetReviewState(ctx context.Context, userID, docID, stateStr, note,
 	if got == nil {
 		got = rec
 	}
-	a.resolveReviewIdentities(ctx, []models.Review{*got})
-	got.Mine = true
-	return got, nil
+	// Resolve on a slice view of the returned value — a throwaway copy
+	// left author blank in the tool response (dogfood find).
+	resolved := []models.Review{*got}
+	a.resolveReviewIdentities(ctx, resolved)
+	resolved[0].Mine = true
+	return &resolved[0], nil
 }
 
 // ListReviewRequests is the MCP poll surface: pending review requests

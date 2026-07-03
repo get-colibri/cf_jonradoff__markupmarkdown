@@ -109,9 +109,12 @@ func (a *API) setReview(w http.ResponseWriter, r *http.Request) {
 	if got == nil {
 		got = rec
 	}
-	a.resolveReviewIdentities(r.Context(), []models.Review{*got})
-	got.Mine = true
-	writeJSON(w, http.StatusOK, got)
+	// Resolve on a slice VIEW of the value we return — resolving a
+	// throwaway copy left author blank in the response (dogfood find).
+	resolved := []models.Review{*got}
+	a.resolveReviewIdentities(r.Context(), resolved)
+	resolved[0].Mine = true
+	writeJSON(w, http.StatusOK, &resolved[0])
 }
 
 // deleteReview is DELETE /api/documents/:id/review — clears the
