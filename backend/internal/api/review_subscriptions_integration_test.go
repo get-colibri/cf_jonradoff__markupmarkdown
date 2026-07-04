@@ -212,3 +212,76 @@ func TestCheckPolicy_RoundTripAndChainScope(t *testing.T) {
 		t.Errorf("policy not deleted: %s", body)
 	}
 }
+
+func TestCheckTemplates_LinkEditForkDelete(t *testing.T) {
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	docA := testutil.NewTestDocument(t, st, user.ID, "# Overview\n\nBody TBD.\n")
+	docB := testutil.NewTestDocument(t, st, user.ID, "# Overview\n\nClean body.\n")
+
+	// Create the named policy.
+	status, body := doJSON(t, srv, "POST", "/api/me/check-templates",
+		map[string]any{"name": "PRD Standard", "rules": []map[string]any{
+			{"kind": "forbidden_phrases", "label": "No placeholders", "phrases": []string{"TBD"}},
+		}}, withCookie(sess))
+	if status != 201 {
+		t.Fatalf("create template status=%d body=%s", status, body)
+	}
+	tplID := extractJSONField(t, body, "id")
+
+	// Link BOTH docs.
+	for _, id := range []string{docA.ID, docB.ID} {
+		status, body = doJSON(t, srv, "PUT", "/api/documents/"+id+"/check-policy",
+			map[string]any{"templateId": tplID}, withCookie(sess))
+		if status != 200 {
+			t.Fatalf("link %s status=%d body=%s", id, status, body)
+		}
+	}
+
+	// A fails (TBD present), B passes.
+	_, bodyA := doJSON(t, srv, "GET", "/api/documents/"+docA.ID+"/checks", nil, withCookie(sess))
+	if !strings.Contains(string(bodyA), `"pass":false`) {
+		t.Errorf("docA should fail placeholder check: %s", bodyA)
+	}
+
+	// EDIT the template (add a section rule) → docB now fails via the
+	// link, with no per-doc update.
+	status, _ = doJSON(t, srv, "PUT", "/api/me/check-templates/"+tplID,
+		map[string]any{"rules": []map[string]any{
+			{"kind": "forbidden_phrases", "label": "No placeholders", "phrases": []string{"TBD"}},
+			{"kind": "required_sections", "label": "Sections", "sections": []string{"Security"}},
+		}}, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("update template status=%d", status)
+	}
+	_, bodyB := doJSON(t, srv, "GET", "/api/documents/"+docB.ID+"/checks", nil, withCookie(sess))
+	if !strings.Contains(string(bodyB), "missing: Security") {
+		t.Errorf("template edit did not propagate to linked docB: %s", bodyB)
+	}
+
+	// FORK docA: save inline rules → detaches; later template edits
+	// must not affect it.
+	doJSON(t, srv, "PUT", "/api/documents/"+docA.ID+"/check-policy",
+		map[string]any{"rules": []map[string]any{
+			{"kind": "max_heading_depth", "label": "Depth", "maxDepth": 3},
+		}}, withCookie(sess))
+	doJSON(t, srv, "PUT", "/api/me/check-templates/"+tplID,
+		map[string]any{"rules": []map[string]any{
+			{"kind": "required_sections", "label": "Sections", "sections": []string{"Compliance"}},
+		}}, withCookie(sess))
+	_, bodyA = doJSON(t, srv, "GET", "/api/documents/"+docA.ID+"/checks", nil, withCookie(sess))
+	if strings.Contains(string(bodyA), "Compliance") {
+		t.Errorf("forked docA still follows template: %s", bodyA)
+	}
+
+	// DELETE the template → docB keeps working with materialized rules.
+	status, _ = doJSON(t, srv, "DELETE", "/api/me/check-templates/"+tplID, nil, withCookie(sess))
+	if status != 204 {
+		t.Fatalf("delete template status=%d", status)
+	}
+	_, bodyB = doJSON(t, srv, "GET", "/api/documents/"+docB.ID+"/checks", nil, withCookie(sess))
+	if !strings.Contains(string(bodyB), "Compliance") {
+		t.Errorf("materialize-on-delete lost docB's rules: %s", bodyB)
+	}
+}

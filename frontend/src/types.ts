@@ -145,6 +145,20 @@ export interface CheckPolicy {
   rootDocumentId?: string;
   rules: CheckRule[];
   updatedAt?: string;
+  /** Set when this chain is LINKED to a named policy — rules above
+   * are the template's current rules, resolved. */
+  templateId?: string;
+  templateName?: string;
+  docsUsingTemplate?: number;
+}
+
+/** A named, reusable rule set ("PRD Standard"). */
+export interface CheckTemplate {
+  id: string;
+  name: string;
+  rules: CheckRule[];
+  updatedAt: string;
+  docsUsing?: number;
 }
 
 export interface NotificationItem {

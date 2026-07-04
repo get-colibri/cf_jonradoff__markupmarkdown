@@ -8,6 +8,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Named check policies.** Save a rule set once ("PRD Standard") and
+  apply it to any doc from a dropdown in the Checks editor. Docs LINK
+  to the policy — improving it updates every linked doc instantly.
+  Editing rules on a linked doc makes the blast radius explicit: the
+  save button splits into "Save to 'PRD Standard' (N docs)" vs "This
+  doc only" (which forks the doc to its own copy). "Save as reusable
+  policy…" promotes any custom rule set; deleting a policy
+  materializes its rules into every linked doc so nothing silently
+  loses its checks. Empty docs offer one-click policy chips before
+  the preset gallery.
+
 - **Doc checks — CI-style lint rules per doc chain.** Define rules
   once (a "Checks" button next to Request review): required sections,
   forbidden text (regex — e.g. ban a lowercase brand name), required

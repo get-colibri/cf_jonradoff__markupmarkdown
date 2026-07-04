@@ -320,9 +320,25 @@ type CheckRule struct {
 type CheckPolicy struct {
 	ID             string      `bson:"_id" json:"id"` // == root document id
 	RootDocumentID string      `bson:"root_document_id" json:"rootDocumentId"`
-	Rules          []CheckRule `bson:"rules" json:"rules"`
-	UpdatedByID    string      `bson:"updated_by_id" json:"-"`
-	UpdatedAt      time.Time   `bson:"updated_at" json:"updatedAt"`
+	// TemplateID links this chain to a named CheckTemplate. When set,
+	// Rules is ignored and evaluation resolves the template's CURRENT
+	// rules — editing the template updates every linked doc. Editing a
+	// linked doc's rules "for this doc only" forks: TemplateID clears
+	// and the rules materialize inline.
+	TemplateID  string      `bson:"template_id,omitempty" json:"templateId,omitempty"`
+	Rules       []CheckRule `bson:"rules" json:"rules"`
+	UpdatedByID string      `bson:"updated_by_id" json:"-"`
+	UpdatedAt   time.Time   `bson:"updated_at" json:"updatedAt"`
+}
+
+// CheckTemplate is a named, reusable rule set ("PRD Standard") owned
+// by a user. Chains link to it via CheckPolicy.TemplateID.
+type CheckTemplate struct {
+	ID        string      `bson:"_id" json:"id"`
+	Name      string      `bson:"name" json:"name"`
+	OwnerID   string      `bson:"owner_id" json:"-"`
+	Rules     []CheckRule `bson:"rules" json:"rules"`
+	UpdatedAt time.Time   `bson:"updated_at" json:"updatedAt"`
 }
 
 // CheckResult is one rule's outcome against one doc's content.

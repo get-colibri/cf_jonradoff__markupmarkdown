@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, APIError } from "../api";
 import { useToast } from "./Toast";
-import type { CheckResult, CheckRule } from "../types";
+import type { CheckResult, CheckRule, CheckTemplate } from "../types";
 
 /** Preset-driven editor for the chain's check policy. Design goals,
  * in order: (1) zero required regex — the common cases are wizards
@@ -26,15 +26,32 @@ export default function CheckPolicyModal({
   const [adding, setAdding] = useState(false);
   const [preview, setPreview] = useState<CheckResult[]>([]);
   const previewTimer = useRef<number | null>(null);
+  // Named-policy state: which template this chain is linked to (if
+  // any), the user's template library, and dirty-tracking so the
+  // save button can be honest about blast radius.
+  const [templates, setTemplates] = useState<CheckTemplate[]>([]);
+  const [linkedId, setLinkedId] = useState<string>("");
+  const [linkedName, setLinkedName] = useState<string>("");
+  const [docsUsing, setDocsUsing] = useState<number>(0);
+  const [dirty, setDirty] = useState(false);
+  const [savingAs, setSavingAs] = useState(false);
+  const [newName, setNewName] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getCheckPolicy(documentId)
-      .then((p) => {
+    Promise.all([
+      api.getCheckPolicy(documentId),
+      api.listCheckTemplates().catch(() => [] as CheckTemplate[]),
+    ])
+      .then(([p, ts]) => {
         if (cancelled) return;
         setRules(p.rules ?? []);
         setAdding((p.rules ?? []).length === 0);
+        setTemplates(ts);
+        setLinkedId(p.templateId ?? "");
+        setLinkedName(p.templateName ?? "");
+        setDocsUsing(p.docsUsingTemplate ?? 0);
+        setDirty(false);
       })
       .catch(() => {
         if (!cancelled) {
@@ -46,6 +63,32 @@ export default function CheckPolicyModal({
       cancelled = true;
     };
   }, [documentId]);
+
+  // Any rule mutation marks the editor dirty (drives the split-save).
+  function mutateRules(fn: (rs: CheckRule[]) => CheckRule[]) {
+    setRules((rs) => (rs ? fn(rs) : rs));
+    setDirty(true);
+  }
+
+  // Switching policy in the dropdown: load its rules into the editor.
+  function selectPolicy(id: string) {
+    if (id === linkedId) return;
+    if (id === "") {
+      setLinkedId("");
+      setLinkedName("");
+      setDocsUsing(0);
+      setDirty(true); // custom now — saving writes inline rules
+      return;
+    }
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setRules(t.rules);
+    setLinkedId(t.id);
+    setLinkedName(t.name);
+    setDocsUsing(t.docsUsing ?? 0);
+    setDirty(false); // freshly loaded from the template
+    setAdding(false);
+  }
 
   // Live preview: every edit re-evaluates the whole candidate rule
   // set against the doc, debounced. Results align to rules by index.
@@ -69,22 +112,80 @@ export default function CheckPolicyModal({
   const headings = useMemo(() => extractHeadings(docContent), [docContent]);
 
   function addRule(r: CheckRule) {
-    setRules((rs) => [...(rs ?? []), r]);
+    mutateRules((rs) => [...rs, r]);
+    setRules((rs) => rs ?? [r]);
     setAdding(false);
   }
 
-  async function save() {
+  async function finish(msg: string) {
+    toast.success(msg);
+    onSaved();
+    onClose();
+  }
+
+  function fail(err: unknown) {
+    toast.error(err instanceof APIError ? err.message : "Couldn't save the checks.");
+  }
+
+  // Save for THIS doc only (inline rules; forks if it was linked).
+  async function saveInline() {
     if (!rules || busy) return;
     setBusy(true);
     try {
       await api.putCheckPolicy(documentId, rules);
-      toast.success(rules.length === 0 ? "Checks removed" : "Checks saved");
-      onSaved();
-      onClose();
-    } catch (err) {
-      toast.error(
-        err instanceof APIError ? err.message : "Couldn't save the checks."
+      await finish(
+        rules.length === 0
+          ? "Checks removed"
+          : linkedId
+            ? "Forked — this doc no longer follows the shared policy"
+            : "Checks saved"
       );
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Save edits INTO the shared policy (all linked docs update).
+  async function saveToTemplate() {
+    if (!rules || busy || !linkedId) return;
+    setBusy(true);
+    try {
+      await api.updateCheckTemplate(linkedId, { rules });
+      await api.linkCheckPolicy(documentId, linkedId); // ensure link
+      await finish(`Saved to “${linkedName}” — every linked doc updated`);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Link an unmodified template selection.
+  async function saveLink() {
+    if (busy || !linkedId) return;
+    setBusy(true);
+    try {
+      await api.linkCheckPolicy(documentId, linkedId);
+      await finish(`Following “${linkedName}”`);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Promote current rules to a new named policy + link this doc.
+  async function saveAsTemplate() {
+    if (!rules || rules.length === 0 || busy || !newName.trim()) return;
+    setBusy(true);
+    try {
+      const t = await api.createCheckTemplate(newName.trim(), rules);
+      await api.linkCheckPolicy(documentId, t.id);
+      await finish(`Policy “${t.name}” created — reusable on any doc`);
+    } catch (err) {
+      fail(err);
     } finally {
       setBusy(false);
     }
@@ -93,21 +194,44 @@ export default function CheckPolicyModal({
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-card border border-rule rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="px-5 py-3 border-b border-rule flex items-center justify-between shrink-0">
-          <div>
+        <div className="px-5 py-3 border-b border-rule shrink-0">
+          <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Checks</h2>
-            <p className="text-xs text-muted">
-              Rules this doc (and every future revision) must pass — shown as
-              ✓/✗ chips. Each rule previews live against the current text.
-            </p>
+            <button
+              onClick={onClose}
+              disabled={busy}
+              className="text-muted hover:text-ink text-sm"
+            >
+              ✕
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            disabled={busy}
-            className="text-muted hover:text-ink text-sm"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-2 mt-1.5 text-xs">
+            <span className="text-muted">Policy:</span>
+            <select
+              value={linkedId}
+              onChange={(e) => selectPolicy(e.target.value)}
+              className="text-xs border border-rule rounded px-2 py-1 bg-card text-ink max-w-[16rem]"
+            >
+              <option value="">Custom (this doc only)</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.docsUsing ? ` · ${t.docsUsing} doc${t.docsUsing === 1 ? "" : "s"}` : ""}
+                </option>
+              ))}
+            </select>
+            {linkedId && dirty && (
+              <span className="text-amber-600 dark:text-amber-400">
+                editing “{linkedName}” — shared with {Math.max(docsUsing, 1)} doc
+                {docsUsing === 1 ? "" : "s"}
+              </span>
+            )}
+            {linkedId && !dirty && (
+              <span className="text-faint">
+                edits here can update every linked doc
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto p-5 space-y-3 text-sm">
@@ -120,11 +244,36 @@ export default function CheckPolicyModal({
               result={preview[i]}
               headings={headings}
               onChange={(patch) =>
-                setRules((rs) => rs!.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+                mutateRules((rs) => rs.map((x, j) => (j === i ? { ...x, ...patch } : x)))
               }
-              onRemove={() => setRules((rs) => rs!.filter((_, j) => j !== i))}
+              onRemove={() => mutateRules((rs) => rs.filter((_, j) => j !== i))}
             />
           ))}
+
+          {rules !== null &&
+            rules.length === 0 &&
+            !linkedId &&
+            templates.length > 0 && (
+              <div className="mb-1">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted mb-1.5">
+                  Apply one of your policies
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => selectPolicy(t.id)}
+                      className="text-xs px-2.5 py-1 rounded-full border border-rule text-ink hover:border-accent hover:bg-accent-soft/40"
+                    >
+                      {t.name}
+                      {t.docsUsing ? (
+                        <span className="text-faint"> · {t.docsUsing}</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
           {rules !== null &&
             (adding ? (
@@ -143,7 +292,44 @@ export default function CheckPolicyModal({
             ))}
         </div>
 
-        <div className="px-5 py-3 border-t border-rule flex items-center justify-end gap-2 shrink-0">
+        <div className="px-5 py-3 border-t border-rule flex items-center gap-2 shrink-0">
+          {/* Save-as: promote current rules to a reusable named policy. */}
+          {!linkedId && (rules?.length ?? 0) > 0 && !savingAs && (
+            <button
+              onClick={() => setSavingAs(true)}
+              disabled={busy}
+              className="text-xs text-accent hover:underline mr-auto"
+            >
+              Save as reusable policy…
+            </button>
+          )}
+          {savingAs && (
+            <span className="flex items-center gap-1.5 mr-auto">
+              <input
+                autoFocus
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveAsTemplate()}
+                placeholder="Policy name — e.g. PRD Standard"
+                className="text-xs border border-rule rounded px-2 py-1 bg-card text-ink w-48"
+              />
+              <button
+                onClick={saveAsTemplate}
+                disabled={busy || !newName.trim()}
+                className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-50"
+              >
+                Create
+              </button>
+              <button
+                onClick={() => setSavingAs(false)}
+                className="text-xs text-muted hover:text-ink"
+              >
+                cancel
+              </button>
+            </span>
+          )}
+          <span className="ml-auto" />
           <button
             onClick={onClose}
             disabled={busy}
@@ -151,13 +337,43 @@ export default function CheckPolicyModal({
           >
             Cancel
           </button>
-          <button
-            onClick={save}
-            disabled={busy || rules === null}
-            className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? "Saving…" : "Save checks"}
-          </button>
+          {linkedId && dirty ? (
+            <>
+              <button
+                onClick={saveInline}
+                disabled={busy || rules === null}
+                className="text-sm px-3 py-1.5 rounded border border-rule text-ink hover:border-ink"
+                title="Detach from the shared policy and keep these rules just here"
+              >
+                This doc only
+              </button>
+              <button
+                onClick={saveToTemplate}
+                disabled={busy || rules === null}
+                className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {busy
+                  ? "Saving…"
+                  : `Save to “${linkedName}”${docsUsing > 1 ? ` (${docsUsing} docs)` : ""}`}
+              </button>
+            </>
+          ) : linkedId ? (
+            <button
+              onClick={saveLink}
+              disabled={busy}
+              className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Saving…" : `Follow “${linkedName}”`}
+            </button>
+          ) : (
+            <button
+              onClick={saveInline}
+              disabled={busy || rules === null}
+              className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? "Saving…" : "Save checks"}
+            </button>
+          )}
         </div>
       </div>
     </div>

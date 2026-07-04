@@ -74,6 +74,7 @@ func (s *Store) ReviewSubscriptions() *mongo.Collection {
 	return s.db.Collection("review_subscriptions")
 }
 func (s *Store) CheckPolicies() *mongo.Collection { return s.db.Collection("check_policies") }
+func (s *Store) CheckTemplates() *mongo.Collection { return s.db.Collection("check_templates") }
 
 func (s *Store) ensureIndexes(ctx context.Context) {
 	_, _ = s.Documents().Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -146,6 +147,13 @@ func (s *Store) ensureIndexes(ctx context.Context) {
 	_, _ = s.ReviewSubscriptions().Indexes().CreateMany(ctx, []mongo.IndexModel{
 		// The revision hook's fan-out lookup: all subscribers on a chain.
 		{Keys: bson.D{{Key: "root_document_id", Value: 1}}},
+	})
+	_, _ = s.CheckTemplates().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "owner_id", Value: 1}, {Key: "name", Value: 1}}},
+	})
+	_, _ = s.CheckPolicies().Indexes().CreateMany(ctx, []mongo.IndexModel{
+		// "used by N docs" + materialize-on-delete lookups.
+		{Keys: bson.D{{Key: "template_id", Value: 1}}},
 	})
 }
 
@@ -434,14 +442,20 @@ func (s *Store) UpsertCheckPolicy(ctx context.Context, p *models.CheckPolicy) er
 	}
 	p.ID = p.RootDocumentID
 	p.UpdatedAt = time.Now().UTC()
+	set := bson.M{
+		"root_document_id": p.RootDocumentID,
+		"rules":            p.Rules,
+		"updated_by_id":    p.UpdatedByID,
+		"updated_at":       p.UpdatedAt,
+	}
+	update := bson.M{"$set": set}
+	if p.TemplateID != "" {
+		set["template_id"] = p.TemplateID
+	} else {
+		update["$unset"] = bson.M{"template_id": ""}
+	}
 	_, err := s.CheckPolicies().UpdateOne(ctx,
-		bson.M{"_id": p.ID},
-		bson.M{"$set": bson.M{
-			"root_document_id": p.RootDocumentID,
-			"rules":            p.Rules,
-			"updated_by_id":    p.UpdatedByID,
-			"updated_at":       p.UpdatedAt,
-		}},
+		bson.M{"_id": p.ID}, update,
 		options.UpdateOne().SetUpsert(true))
 	return err
 }
@@ -462,6 +476,105 @@ func (s *Store) GetCheckPolicy(ctx context.Context, rootDocID string) (*models.C
 // DeleteCheckPolicy removes the chain's policy entirely.
 func (s *Store) DeleteCheckPolicy(ctx context.Context, rootDocID string) error {
 	_, err := s.CheckPolicies().DeleteOne(ctx, bson.M{"_id": rootDocID})
+	return err
+}
+
+// ListCheckTemplatesForUser returns the user's named policies, A-Z.
+func (s *Store) ListCheckTemplatesForUser(ctx context.Context, ownerID string) ([]models.CheckTemplate, error) {
+	cur, err := s.CheckTemplates().Find(ctx,
+		bson.M{"owner_id": ownerID},
+		options.Find().SetSort(bson.D{{Key: "name", Value: 1}}).SetLimit(50))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []models.CheckTemplate
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetCheckTemplate fetches one template, owner-scoped. Nil when absent.
+func (s *Store) GetCheckTemplate(ctx context.Context, ownerID, id string) (*models.CheckTemplate, error) {
+	var t models.CheckTemplate
+	err := s.CheckTemplates().FindOne(ctx, bson.M{"_id": id, "owner_id": ownerID}).Decode(&t)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// GetCheckTemplateAny fetches without owner scoping — used by check
+// EVALUATION, where any viewer of a linked doc needs the rules.
+func (s *Store) GetCheckTemplateAny(ctx context.Context, id string) (*models.CheckTemplate, error) {
+	var t models.CheckTemplate
+	err := s.CheckTemplates().FindOne(ctx, bson.M{"_id": id}).Decode(&t)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// UpsertCheckTemplate creates or updates a named policy.
+func (s *Store) UpsertCheckTemplate(ctx context.Context, t *models.CheckTemplate) error {
+	if t.OwnerID == "" || t.Name == "" {
+		return fmt.Errorf("upsert check template: missing owner or name")
+	}
+	t.UpdatedAt = time.Now().UTC()
+	_, err := s.CheckTemplates().UpdateOne(ctx,
+		bson.M{"_id": t.ID, "owner_id": t.OwnerID},
+		bson.M{"$set": bson.M{
+			"name":       t.Name,
+			"owner_id":   t.OwnerID,
+			"rules":      t.Rules,
+			"updated_at": t.UpdatedAt,
+		}},
+		options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+// CountPoliciesUsingTemplate — the "used by N docs" number.
+func (s *Store) CountPoliciesUsingTemplate(ctx context.Context, templateID string) (int64, error) {
+	return s.CheckPolicies().CountDocuments(ctx, bson.M{"template_id": templateID})
+}
+
+// MaterializeTemplateIntoPolicies copies the template's rules inline
+// into every linked chain and unlinks them — called before template
+// deletion so no doc's checks silently vanish. Per-row UpdateOne.
+func (s *Store) MaterializeTemplateIntoPolicies(ctx context.Context, t *models.CheckTemplate) error {
+	cur, err := s.CheckPolicies().Find(ctx, bson.M{"template_id": t.ID})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var policies []models.CheckPolicy
+	if err := cur.All(ctx, &policies); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, p := range policies {
+		if _, err := s.CheckPolicies().UpdateOne(ctx,
+			bson.M{"_id": p.ID},
+			bson.M{
+				"$set":   bson.M{"rules": t.Rules, "updated_at": now},
+				"$unset": bson.M{"template_id": ""},
+			}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteCheckTemplate removes a template (owner-scoped).
+func (s *Store) DeleteCheckTemplate(ctx context.Context, ownerID, id string) error {
+	_, err := s.CheckTemplates().DeleteOne(ctx, bson.M{"_id": id, "owner_id": ownerID})
 	return err
 }
 

@@ -247,19 +247,41 @@ func (a *API) getDocChecks(w http.ResponseWriter, r *http.Request) {
 		a.writeAccessError(w, r, accErr)
 		return
 	}
-	policy, err := a.store.GetCheckPolicy(r.Context(), a.chainRootID(r.Context(), doc))
+	rules, _, err := a.resolvedCheckRules(r, doc)
 	if err != nil {
 		internalError(w, "store.get_check_policy", err)
 		return
 	}
-	if policy == nil || len(policy.Rules) == 0 {
+	if len(rules) == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"hasPolicy": false, "results": []models.CheckResult{}})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hasPolicy": true,
-		"results":   evaluateChecks(policy.Rules, doc.Content),
+		"results":   evaluateChecks(rules, doc.Content),
 	})
+}
+
+// resolvedCheckRules loads the chain's policy and, when linked to a
+// template, resolves the template's CURRENT rules — the mechanism
+// that makes editing a named policy update every linked doc.
+func (a *API) resolvedCheckRules(r *http.Request, doc *models.Document) ([]models.CheckRule, *models.CheckPolicy, error) {
+	policy, err := a.store.GetCheckPolicy(r.Context(), a.chainRootID(r.Context(), doc))
+	if err != nil || policy == nil {
+		return nil, policy, err
+	}
+	if policy.TemplateID != "" {
+		t, err := a.store.GetCheckTemplateAny(r.Context(), policy.TemplateID)
+		if err != nil {
+			return nil, policy, err
+		}
+		if t != nil {
+			return t.Rules, policy, nil
+		}
+		// Dangling link (template deleted without materialize — should
+		// not happen, but fail soft to the inline rules).
+	}
+	return policy.Rules, policy, nil
 }
 
 // getCheckPolicy is GET /api/documents/:id/check-policy — the raw
@@ -271,15 +293,25 @@ func (a *API) getCheckPolicy(w http.ResponseWriter, r *http.Request) {
 		a.writeAccessError(w, r, accErr)
 		return
 	}
-	policy, err := a.store.GetCheckPolicy(r.Context(), a.chainRootID(r.Context(), doc))
+	rules, policy, err := a.resolvedCheckRules(r, doc)
 	if err != nil {
 		internalError(w, "store.get_check_policy", err)
 		return
 	}
-	if policy == nil {
-		policy = &models.CheckPolicy{Rules: []models.CheckRule{}}
+	out := map[string]any{"rules": []models.CheckRule{}}
+	if rules != nil {
+		out["rules"] = rules
 	}
-	writeJSON(w, http.StatusOK, policy)
+	if policy != nil && policy.TemplateID != "" {
+		out["templateId"] = policy.TemplateID
+		if t, _ := a.store.GetCheckTemplateAny(r.Context(), policy.TemplateID); t != nil {
+			out["templateName"] = t.Name
+		}
+		if n, err := a.store.CountPoliciesUsingTemplate(r.Context(), policy.TemplateID); err == nil {
+			out["docsUsingTemplate"] = n
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // putCheckPolicy is PUT /api/documents/:id/check-policy — replaces
@@ -301,13 +333,37 @@ func (a *API) putCheckPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	capBody(w, r, maxBodyDefault)
 	var req struct {
-		Rules []models.CheckRule `json:"rules"`
+		Rules      []models.CheckRule `json:"rules"`
+		TemplateID string             `json:"templateId,omitempty"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	rootID := a.chainRootID(r.Context(), doc)
+	// Link mode: attach this chain to a named policy (must be yours).
+	if req.TemplateID != "" {
+		t, err := a.store.GetCheckTemplate(r.Context(), user.ID, req.TemplateID)
+		if err != nil || t == nil {
+			writeError(w, http.StatusNotFound, "no policy of yours with that id")
+			return
+		}
+		policy := &models.CheckPolicy{
+			RootDocumentID: rootID,
+			TemplateID:     t.ID,
+			Rules:          nil,
+			UpdatedByID:    user.ID,
+		}
+		if err := a.store.UpsertCheckPolicy(r.Context(), policy); err != nil {
+			internalError(w, "store.link_check_policy", err)
+			return
+		}
+		a.hub.Broadcast(doc.ID, "reviews-updated")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"templateId": t.ID, "templateName": t.Name, "rules": t.Rules,
+		})
+		return
+	}
 	if len(req.Rules) == 0 {
 		if err := a.store.DeleteCheckPolicy(r.Context(), rootID); err != nil {
 			internalError(w, "store.delete_check_policy", err)
@@ -403,4 +459,154 @@ func (a *API) previewDocChecks(w http.ResponseWriter, r *http.Request) {
 		out = append(out, res)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": out})
+}
+
+// listCheckTemplates is GET /api/me/check-templates.
+func (a *API) listCheckTemplates(w http.ResponseWriter, r *http.Request) {
+	user := a.currentUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	ts, err := a.store.ListCheckTemplatesForUser(r.Context(), user.ID)
+	if err != nil {
+		internalError(w, "store.list_check_templates", err)
+		return
+	}
+	out := make([]map[string]any, 0, len(ts))
+	for _, t := range ts {
+		n, _ := a.store.CountPoliciesUsingTemplate(r.Context(), t.ID)
+		out = append(out, map[string]any{
+			"id": t.ID, "name": t.Name, "rules": t.Rules,
+			"updatedAt": t.UpdatedAt, "docsUsing": n,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type checkTemplateRequest struct {
+	Name  string             `json:"name"`
+	Rules []models.CheckRule `json:"rules"`
+}
+
+// createCheckTemplate is POST /api/me/check-templates.
+func (a *API) createCheckTemplate(w http.ResponseWriter, r *http.Request) {
+	user := a.currentUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	if !a.enforceScope(w, r, models.TokenScopeAdmin) {
+		return
+	}
+	capBody(w, r, maxBodyDefault)
+	var req checkTemplateRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || len(name) > 60 {
+		writeError(w, http.StatusBadRequest, "name is required (max 60 chars)")
+		return
+	}
+	rules, err := validateCheckRules(req.Rules)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(rules) == 0 {
+		writeError(w, http.StatusBadRequest, "a policy needs at least one rule")
+		return
+	}
+	t := &models.CheckTemplate{
+		ID:      uuid.NewString(),
+		Name:    name,
+		OwnerID: user.ID,
+		Rules:   rules,
+	}
+	if err := a.store.UpsertCheckTemplate(r.Context(), t); err != nil {
+		internalError(w, "store.create_check_template", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, t)
+}
+
+// updateCheckTemplate is PUT /api/me/check-templates/{id} — edits
+// propagate to every linked doc by construction (they resolve the
+// template at read time).
+func (a *API) updateCheckTemplate(w http.ResponseWriter, r *http.Request) {
+	user := a.currentUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	if !a.enforceScope(w, r, models.TokenScopeAdmin) {
+		return
+	}
+	capBody(w, r, maxBodyDefault)
+	id := mux.Vars(r)["id"]
+	existing, err := a.store.GetCheckTemplate(r.Context(), user.ID, id)
+	if err != nil || existing == nil {
+		writeError(w, http.StatusNotFound, "no policy of yours with that id")
+		return
+	}
+	var req checkTemplateRequest
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if name := strings.TrimSpace(req.Name); name != "" {
+		if len(name) > 60 {
+			writeError(w, http.StatusBadRequest, "name too long (max 60)")
+			return
+		}
+		existing.Name = name
+	}
+	if req.Rules != nil {
+		rules, err := validateCheckRules(req.Rules)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if len(rules) == 0 {
+			writeError(w, http.StatusBadRequest, "a policy needs at least one rule")
+			return
+		}
+		existing.Rules = rules
+	}
+	if err := a.store.UpsertCheckTemplate(r.Context(), existing); err != nil {
+		internalError(w, "store.update_check_template", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, existing)
+}
+
+// deleteCheckTemplate is DELETE /api/me/check-templates/{id}. Linked
+// docs keep working: their policies get the rules materialized inline
+// before the template goes away.
+func (a *API) deleteCheckTemplate(w http.ResponseWriter, r *http.Request) {
+	user := a.currentUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	if !a.enforceScope(w, r, models.TokenScopeAdmin) {
+		return
+	}
+	id := mux.Vars(r)["id"]
+	t, err := a.store.GetCheckTemplate(r.Context(), user.ID, id)
+	if err != nil || t == nil {
+		writeError(w, http.StatusNotFound, "no policy of yours with that id")
+		return
+	}
+	if err := a.store.MaterializeTemplateIntoPolicies(r.Context(), t); err != nil {
+		internalError(w, "store.materialize_template", err)
+		return
+	}
+	if err := a.store.DeleteCheckTemplate(r.Context(), user.ID, id); err != nil {
+		internalError(w, "store.delete_check_template", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

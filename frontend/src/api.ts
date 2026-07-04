@@ -22,6 +22,7 @@ import type {
   CheckPolicy,
   CheckResult,
   CheckRule,
+  CheckTemplate,
   DocChecksResponse,
   Review,
   ReviewRequest,
@@ -562,12 +563,33 @@ export const api = {
     req<DocChecksResponse>(`/api/documents/${documentId}/checks`),
   getCheckPolicy: (documentId: string) =>
     req<CheckPolicy>(`/api/documents/${documentId}/check-policy`),
-  /** Replace the chain's rule set; empty rules deletes the policy. */
+  /** Replace the chain's rule set (inline / forked); empty rules
+   * deletes the policy. */
   putCheckPolicy: (documentId: string, rules: CheckRule[]) =>
     req<CheckPolicy>(`/api/documents/${documentId}/check-policy`, {
       method: "PUT",
       body: JSON.stringify({ rules }),
     }),
+  /** Link the chain to a named policy — edits to the policy then
+   * apply to every linked doc automatically. */
+  linkCheckPolicy: (documentId: string, templateId: string) =>
+    req<CheckPolicy>(`/api/documents/${documentId}/check-policy`, {
+      method: "PUT",
+      body: JSON.stringify({ templateId }),
+    }),
+  listCheckTemplates: () => req<CheckTemplate[]>("/api/me/check-templates"),
+  createCheckTemplate: (name: string, rules: CheckRule[]) =>
+    req<CheckTemplate>("/api/me/check-templates", {
+      method: "POST",
+      body: JSON.stringify({ name, rules }),
+    }),
+  updateCheckTemplate: (id: string, patch: { name?: string; rules?: CheckRule[] }) =>
+    req<CheckTemplate>(`/api/me/check-templates/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  deleteCheckTemplate: (id: string) =>
+    req<void>(`/api/me/check-templates/${id}`, { method: "DELETE" }),
   /** Evaluate a candidate rule set WITHOUT saving — powers the live
    * pass/fail preview in the checks editor. Results align by index. */
   previewChecks: (documentId: string, rules: CheckRule[]) =>
