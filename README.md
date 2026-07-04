@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml/badge.svg)](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/jonradoff/markupmarkdown/branch/master/graph/badge.svg)](https://codecov.io/gh/jonradoff/markupmarkdown)
+[![version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 
 **Google Docs for markdown — comment on, edit, and ship `.md` files like it's a real document.** Paste a URL, drag-select text, leave a margin comment. Your teammates see it in real time. Edit the raw markdown in a native CodeMirror editor with a formatting toolbar, find-and-replace, and live preview. Resolve threads, then hand them to Claude for an AI-revised version — or push your edits straight back to GitHub as a pull request or direct commit. Agents join the same review through an MCP server: they read what humans read, leave threads humans approve, and (with explicit human sign-off) apply the resolved feedback as a new revision.
 
@@ -93,6 +94,8 @@ The home page surfaces *Your indexes* above *Your documents* so a saved index be
 - **Personal access tokens** authenticate scripts and agents to the same REST API humans use.
 - **MCP server** at `/mcp` exposes the review primitives as Model Context Protocol tools — any MCP-aware agent (Claude Code, Claude Agent SDK apps, custom tools) can read docs, leave threads, propose suggested edits, set review states, reply to humans, resolve, and trigger AI revisions with human approval.
 - **Agent identity badges** — comments and replies created via a token marked "for an agent" get a small bot badge so humans can scan a thread and instantly see who's whom.
+- **Index-level agent audits** — on any index, summon one of your tokens across every file matching a pattern ("review every `_PRD` with my auto-reviewer"). One click mints the review requests; auto-review works through them within minutes, rate-limited on your own key.
+- **Agent activity status** — a ⚡ in the top nav pulses while your reviewer works, with a dropdown of every run from the last 24h: running, done ("approved · no issues found", "requested changes · 3 suggestions"), or failed with the reason. Every outcome also lands a bell notification — nothing evaporates silently.
 - **Agents are reviewers, not autonomous committers.** Any revision an agent writes lands *proposed* — the pushback flow refuses to ship it to GitHub until a human accepts via the *Accept revision* button (cookie session only; agents cannot self-accept). Direct port of the GitBook change-request pattern applied to markupmarkdown's revision chain.
 
 ## Lightweight by design

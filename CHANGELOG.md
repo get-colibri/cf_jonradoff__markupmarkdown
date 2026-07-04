@@ -6,6 +6,21 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.0.0] — 2026-07-04
+
+**markupmarkdown 1.0.** What started as Google-Docs-style commenting
+on markdown files is now a complete human+agent review platform: docs
+round-trip with GitHub, comments survive rewrites, reviews carry
+discrete states that gate pushes, suggestions apply in one click,
+named check policies enforce standards across doc collections, and
+agents are first-class reviewers — summonable individually, standing
+on every revision, fulfilled by the server itself, and auditable
+across an entire index — always with a human holding the accept/push
+keys. Everything below shipped since 0.6.0; see prior releases for
+the full arc.
+
 ### Added
 
 - **Agent activity status + notifications.** You can now always tell
