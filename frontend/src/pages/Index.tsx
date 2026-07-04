@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, APIError } from "../api";
 import type { IndexProgressEvent, MarkdownIndexItem, MarkdownIndexResponse } from "../types";
+import IndexPoliciesPanel from "../components/IndexPoliciesPanel";
 import ErrorBlock from "../components/ErrorBlock";
 import { useToast, toastMessageFor } from "../components/Toast";
 import { useDialog } from "../components/Dialogs";
@@ -485,6 +486,11 @@ export default function IndexPage() {
           You're viewing this as a guest — only public files are shown. Sign in
           with GitHub to see private repo contents you have access to.
         </div>
+      )}
+
+      {/* Pattern → policy mapping (index creator only). */}
+      {isCreator && id && (
+        <IndexPoliciesPanel indexId={id} items={items} />
       )}
 
       {/* Filename filter tabs. "All" is always present; the user can

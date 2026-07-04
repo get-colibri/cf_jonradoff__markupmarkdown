@@ -247,7 +247,7 @@ func (a *API) getDocChecks(w http.ResponseWriter, r *http.Request) {
 		a.writeAccessError(w, r, accErr)
 		return
 	}
-	rules, _, err := a.resolvedCheckRules(r, doc)
+	rules, policy, err := a.resolvedCheckRules(r, doc)
 	if err != nil {
 		internalError(w, "store.get_check_policy", err)
 		return
@@ -256,10 +256,18 @@ func (a *API) getDocChecks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"hasPolicy": false, "results": []models.CheckResult{}})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"hasPolicy": true,
 		"results":   evaluateChecks(rules, doc.Content),
-	})
+	}
+	// Surface WHICH named policy governs this doc — reviewers should
+	// see "PRD Standard" from the doc, not just anonymous chips.
+	if policy != nil && policy.TemplateID != "" {
+		if t, _ := a.store.GetCheckTemplateAny(r.Context(), policy.TemplateID); t != nil {
+			out["policyName"] = t.Name
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // resolvedCheckRules loads the chain's policy and, when linked to a
@@ -306,6 +314,12 @@ func (a *API) getCheckPolicy(w http.ResponseWriter, r *http.Request) {
 		out["templateId"] = policy.TemplateID
 		if t, _ := a.store.GetCheckTemplateAny(r.Context(), policy.TemplateID); t != nil {
 			out["templateName"] = t.Name
+			// Ownership drives the editor UI: non-owners can only fork
+			// ("this doc only") — they can never write into someone
+			// else's policy, and the server enforces the same.
+			if u := a.currentUser(r); u != nil && t.OwnerID == u.ID {
+				out["templateOwned"] = true
+			}
 		}
 		if n, err := a.store.CountPoliciesUsingTemplate(r.Context(), policy.TemplateID); err == nil {
 			out["docsUsingTemplate"] = n

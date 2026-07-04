@@ -485,6 +485,9 @@ func (a *API) createDocument(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// First-open policy link: if an index maps this file's pattern to
+	// a check policy, apply it now (never replaces existing checks).
+	a.maybeAutoApplyIndexPolicies(doc)
 	writeJSON(w, http.StatusCreated, doc)
 }
 

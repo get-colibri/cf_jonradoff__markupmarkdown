@@ -212,3 +212,9 @@ func (a *API) StoreAnthropicKeyForTest(ctx context.Context, userID, key string) 
 	}
 	return a.store.UpsertAnthropicKey(ctx, userID, ciphertext, "test")
 }
+
+// MaybeAutoApplyIndexPoliciesForTest exposes the first-open policy
+// hook synchronback-door for integration tests.
+func (a *API) MaybeAutoApplyIndexPoliciesForTest(doc *models.Document) {
+	a.maybeAutoApplyIndexPolicies(doc)
+}

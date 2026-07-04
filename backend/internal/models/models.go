@@ -141,6 +141,10 @@ type Index struct {
 	// authenticated access at create-time. Read handlers re-verify
 	// access on every view (same model as Document.Private).
 	Private bool `bson:"private" json:"private"`
+	// PolicyRules: pattern→check-template mappings the index CREATOR
+	// manages. json:"-" — served only through the creator-scoped
+	// policy-rules endpoint, never on the public index payload.
+	PolicyRules []IndexPolicyRule `bson:"policy_rules,omitempty" json:"-"`
 	// DefaultFilter is the case-insensitive filename-filter substring
 	// the creator has pinned as the default view for share-link
 	// visitors. Empty = no pinned filter (visitors see "All"). A
@@ -329,6 +333,18 @@ type CheckPolicy struct {
 	Rules       []CheckRule `bson:"rules" json:"rules"`
 	UpdatedByID string      `bson:"updated_by_id" json:"-"`
 	UpdatedAt   time.Time   `bson:"updated_at" json:"updatedAt"`
+}
+
+// IndexPolicyRule maps a filename pattern to a check template within
+// an index: "anything with _PRD gets PRD Standard". Owned by the
+// index creator (only they can edit rules or run Apply); Exceptions
+// are lowercased owner/repo/path keys the creator explicitly opted
+// out — they survive re-applies and are never auto-linked.
+type IndexPolicyRule struct {
+	ID         string   `bson:"id" json:"id"`
+	Pattern    string   `bson:"pattern" json:"pattern"` // case-insensitive substring on the file path
+	TemplateID string   `bson:"template_id" json:"templateId"`
+	Exceptions []string `bson:"exceptions,omitempty" json:"exceptions,omitempty"`
 }
 
 // CheckTemplate is a named, reusable rule set ("PRD Standard") owned

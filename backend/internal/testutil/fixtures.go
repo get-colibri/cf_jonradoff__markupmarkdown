@@ -151,3 +151,49 @@ func AsToken(r *http.Request, plaintext string) *http.Request {
 func NewRecorder() *httptest.ResponseRecorder {
 	return httptest.NewRecorder()
 }
+
+// NewTestIndex inserts a repo-index owned by userID.
+func NewTestIndex(t *testing.T, st *store.Store, userID, owner, repo string) *models.Index {
+	t.Helper()
+	now := time.Now().UTC()
+	idx := &models.Index{
+		ID:          uuid.NewString(),
+		Kind:        models.IndexKindRepo,
+		Owner:       owner,
+		Repo:        repo,
+		Title:       owner + "/" + repo,
+		SourceURL:   "https://github.com/" + owner + "/" + repo,
+		CreatedByID: userID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.InsertIndex(context.Background(), idx); err != nil {
+		t.Fatalf("insert test index: %v", err)
+	}
+	return idx
+}
+
+// NewTestGitHubDocument inserts a github-blob-sourced doc.
+func NewTestGitHubDocument(t *testing.T, st *store.Store, userID, owner, repo, ref, path string) *models.Document {
+	t.Helper()
+	now := time.Now().UTC()
+	doc := &models.Document{
+		ID:          uuid.NewString(),
+		Title:       path,
+		Origin:      "url",
+		SourceKind:  models.SourceKindGitHubBlob,
+		SourceURL:   "https://github.com/" + owner + "/" + repo + "/blob/" + ref + "/" + path,
+		Content:     "# " + path + "\n\nBody.\n",
+		GitHubOwner: owner,
+		GitHubRepo:  repo,
+		GitHubRef:   ref,
+		GitHubPath:  path,
+		CreatedByID: userID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.InsertDocument(context.Background(), doc); err != nil {
+		t.Fatalf("insert test github doc: %v", err)
+	}
+	return doc
+}

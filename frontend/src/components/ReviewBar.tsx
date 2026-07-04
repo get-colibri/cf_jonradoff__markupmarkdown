@@ -129,7 +129,15 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
   ];
 
   const hasChips = reviews.length > 0 || pending.length > 0 || subs.length > 0;
-  const checkResults = checks?.hasPolicy ? checks.results : [];
+  const failingChecks = checks?.hasPolicy
+    ? checks.results.filter((c) => !c.pass).length
+    : 0;
+  const checksTitle = !checks?.hasPolicy
+    ? "Lint rules for this doc chain — none set yet"
+    : (checks.policyName ? `${checks.policyName} — ` : "") +
+      (failingChecks > 0
+        ? `${failingChecks} failing — click for details`
+        : "all checks passing");
 
   return (
     <div className="mb-4 space-y-2">
@@ -164,10 +172,22 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
         })}
         <button
           onClick={() => setShowChecksEditor(true)}
-          className="px-2 py-1 rounded border border-rule text-muted hover:text-ink hover:border-ink transition"
-          title="Lint rules for this doc chain — results render as pass/fail chips"
+          className={
+            "px-2 py-1 rounded border transition " +
+            (!checks?.hasPolicy
+              ? "border-rule text-muted hover:text-ink hover:border-ink"
+              : failingChecks > 0
+                ? "border-danger/50 text-danger hover:border-danger"
+                : "border-success/50 text-success hover:border-success")
+          }
+          title={checksTitle}
         >
           Checks
+          {checks?.hasPolicy && (
+            <span className="ml-1 font-medium">
+              {failingChecks > 0 ? `✗ ${failingChecks}` : "✓"}
+            </span>
+          )}
         </button>
         <RequestReviewMenu
           doc={doc}
@@ -182,28 +202,6 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
           }
         />
       </div>
-
-      {/* CI-style check chips: deterministic lint results for this
-          revision. Green = pass; red carries the failure detail in
-          its tooltip. */}
-      {checkResults.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 text-xs">
-          {checkResults.map((c) => (
-            <span
-              key={c.ruleId}
-              title={c.detail || (c.pass ? "Passing" : undefined)}
-              className={
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border " +
-                (c.pass
-                  ? "border-success/40 text-success"
-                  : "border-danger/40 text-danger cursor-help")
-              }
-            >
-              {c.pass ? "✓" : "✗"} {c.label}
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Who-said-what chips. Named, never counted — this line is the
           answer to "what does the review status actually mean?" */}

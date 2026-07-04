@@ -144,6 +144,12 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/me/check-templates/{id}", a.updateCheckTemplate).Methods("PUT")
 	r.HandleFunc("/api/me/check-templates/{id}", a.deleteCheckTemplate).Methods("DELETE")
 
+	// Index-level policy mapping (index creator only): pattern → policy
+	// with exceptions, one-click apply, auto-link on first open.
+	r.HandleFunc("/api/indexes/{id}/policy-rules", a.getIndexPolicyRules).Methods("GET")
+	r.HandleFunc("/api/indexes/{id}/policy-rules", a.putIndexPolicyRules).Methods("PUT")
+	r.HandleFunc("/api/indexes/{id}/policy-rules/apply", a.applyIndexPolicyRules).Methods("POST")
+
 	// Superuser console. Gated by MARKUPMARKDOWN_ADMIN_LOGINS (env
 	// allowlist of GitHub logins), cookie-session only — see admin.go.
 	r.HandleFunc("/api/admin/overview", a.adminOverviewHandler).Methods("GET")

@@ -23,6 +23,7 @@ import type {
   CheckResult,
   CheckRule,
   CheckTemplate,
+  IndexPolicyRule,
   DocChecksResponse,
   Review,
   ReviewRequest,
@@ -590,6 +591,20 @@ export const api = {
     }),
   deleteCheckTemplate: (id: string) =>
     req<void>(`/api/me/check-templates/${id}`, { method: "DELETE" }),
+  /** Index-level policy mapping (index creator only). */
+  getIndexPolicyRules: (indexId: string) =>
+    req<{ rules: IndexPolicyRule[] }>(`/api/indexes/${indexId}/policy-rules`),
+  putIndexPolicyRules: (indexId: string, rules: IndexPolicyRule[]) =>
+    req<{ rules: IndexPolicyRule[] }>(`/api/indexes/${indexId}/policy-rules`, {
+      method: "PUT",
+      body: JSON.stringify({ rules }),
+    }),
+  applyIndexPolicyRules: (indexId: string) =>
+    req<{
+      linked: string[];
+      skipped: { path: string; reason: string }[];
+      pending: number;
+    }>(`/api/indexes/${indexId}/policy-rules/apply`, { method: "POST" }),
   /** Evaluate a candidate rule set WITHOUT saving — powers the live
    * pass/fail preview in the checks editor. Results align by index. */
   previewChecks: (documentId: string, rules: CheckRule[]) =>

@@ -8,6 +8,30 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Index-level policy application.** On any index you created, a
+  "Check policies" panel maps filename patterns to your named
+  policies ("_PRD → PRD Standard"): live match preview with per-file
+  exception unticks, one-click apply across every opened doc, and
+  files not yet opened link automatically on first open — so the
+  mapping stays true over time. Docs that already have checks are
+  never overwritten, and rules can only reference policies the index
+  creator owns.
+- **Policy name visible from the doc.** The Checks button now carries
+  the verdict inline — green "Checks ✓" or red "Checks ✗ 2" — with
+  the governing policy's name in the tooltip; click for full detail.
+  (Replaces the per-rule chip row, which crowded the doc header.)
+- **Non-owner safety in the checks editor.** Opening Checks on a doc
+  that follows someone ELSE's policy shows it locked — you can fork
+  "for this doc only" but never write into another user's policy
+  (server-enforced; the UI now matches).
+
+### Fixed
+
+- **Favicon rendered as a solid blob.** A CSS-specificity bug inside
+  the SVG (class fill overriding the frame's fill="none") painted the
+  outline rectangle solid, covering the M↓ glyph. The canonical
+  Markdown mark is back.
+
 - **Named check policies.** Save a rule set once ("PRD Standard") and
   apply it to any doc from a dropdown in the Checks editor. Docs LINK
   to the policy — improving it updates every linked doc instantly.

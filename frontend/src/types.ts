@@ -138,6 +138,8 @@ export interface CheckResult {
 export interface DocChecksResponse {
   hasPolicy: boolean;
   results: CheckResult[];
+  /** Name of the linked policy governing this doc, if any. */
+  policyName?: string;
 }
 
 export interface CheckPolicy {
@@ -149,7 +151,16 @@ export interface CheckPolicy {
    * are the template's current rules, resolved. */
   templateId?: string;
   templateName?: string;
+  templateOwned?: boolean;
   docsUsingTemplate?: number;
+}
+
+/** Pattern → policy mapping on an index (creator-managed). */
+export interface IndexPolicyRule {
+  id: string;
+  pattern: string;
+  templateId: string;
+  exceptions?: string[];
 }
 
 /** A named, reusable rule set ("PRD Standard"). */

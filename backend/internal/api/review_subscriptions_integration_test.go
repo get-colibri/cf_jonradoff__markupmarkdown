@@ -285,3 +285,60 @@ func TestCheckTemplates_LinkEditForkDelete(t *testing.T) {
 		t.Errorf("materialize-on-delete lost docB's rules: %s", bodyB)
 	}
 }
+
+func TestIndexPolicyRules_CreatorScopeAndAutoApply(t *testing.T) {
+	srv, st, a := newTestServer(t)
+	creator := testutil.NewTestUser(t, st)
+	stranger := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, creator.ID)
+	strangerSess := testutil.NewTestSession(t, st, stranger.ID)
+
+	// Creator's template + an index they own.
+	_, body := doJSON(t, srv, "POST", "/api/me/check-templates",
+		map[string]any{"name": "PRD Standard", "rules": []map[string]any{
+			{"kind": "forbidden_phrases", "label": "No placeholders", "phrases": []string{"TBD"}},
+		}}, withCookie(sess))
+	tplID := extractJSONField(t, body, "id")
+
+	idx := testutil.NewTestIndex(t, st, creator.ID, "acme", "docs")
+
+	// Stranger can't see or edit the rules (404).
+	status, _ := doJSON(t, srv, "GET", "/api/indexes/"+idx.ID+"/policy-rules", nil, withCookie(strangerSess))
+	if status != 404 {
+		t.Errorf("stranger rules status=%d want 404", status)
+	}
+
+	// Creator sets a rule.
+	status, body = doJSON(t, srv, "PUT", "/api/indexes/"+idx.ID+"/policy-rules",
+		map[string]any{"rules": []map[string]any{
+			{"pattern": "_PRD", "templateId": tplID},
+		}}, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("put rules status=%d body=%s", status, body)
+	}
+
+	// Auto-apply on first open: a matching doc created in that repo
+	// links to the policy; a non-matching one doesn't.
+	match := testutil.NewTestGitHubDocument(t, st, stranger.ID, "acme", "docs", "main", "WINGMAN_PRD.md")
+	miss := testutil.NewTestGitHubDocument(t, st, stranger.ID, "acme", "docs", "main", "README.md")
+	a.MaybeAutoApplyIndexPoliciesForTest(match)
+	a.MaybeAutoApplyIndexPoliciesForTest(miss)
+
+	waitPolicy := func(docID string) *models.CheckPolicy {
+		for i := 0; i < 100; i++ {
+			p, _ := st.GetCheckPolicy(context.Background(), docID)
+			if p != nil {
+				return p
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return nil
+	}
+	if p := waitPolicy(match.ID); p == nil || p.TemplateID != tplID {
+		t.Errorf("matching doc not auto-linked: %+v", p)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if p, _ := st.GetCheckPolicy(context.Background(), miss.ID); p != nil {
+		t.Errorf("non-matching doc got a policy: %+v", p)
+	}
+}

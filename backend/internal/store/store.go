@@ -578,6 +578,38 @@ func (s *Store) DeleteCheckTemplate(ctx context.Context, ownerID, id string) err
 	return err
 }
 
+// SetIndexPolicyRules replaces an index's pattern→policy mappings.
+func (s *Store) SetIndexPolicyRules(ctx context.Context, indexID string, rules []models.IndexPolicyRule) error {
+	update := bson.M{"$set": bson.M{"policy_rules": rules}}
+	if len(rules) == 0 {
+		update = bson.M{"$unset": bson.M{"policy_rules": ""}}
+	}
+	_, err := s.Indexes().UpdateOne(ctx, bson.M{"_id": indexID}, update)
+	return err
+}
+
+// FindIndexesWithPolicyRules returns indexes that could govern a doc
+// in owner/repo: repo-indexes matching both, user/org indexes
+// matching the owner — only those with rules configured.
+func (s *Store) FindIndexesWithPolicyRules(ctx context.Context, owner, repo string) ([]models.Index, error) {
+	cur, err := s.Indexes().Find(ctx, bson.M{
+		"policy_rules.0": bson.M{"$exists": true},
+		"$or": []bson.M{
+			{"kind": "repo", "owner": owner, "repo": repo},
+			{"kind": bson.M{"$in": []string{"user", "org"}}, "owner": owner},
+		},
+	}, options.Find().SetLimit(10))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cur.Close(ctx) }()
+	var out []models.Index
+	if err := cur.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ReviewSubscriptionID is the deterministic composite _id for a
 // standing-reviewer subscription: rootDocID:reviewerKey.
 func ReviewSubscriptionID(rootDocID, reviewerKey string) string {

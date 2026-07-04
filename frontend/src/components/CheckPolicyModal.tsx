@@ -33,6 +33,7 @@ export default function CheckPolicyModal({
   const [linkedId, setLinkedId] = useState<string>("");
   const [linkedName, setLinkedName] = useState<string>("");
   const [docsUsing, setDocsUsing] = useState<number>(0);
+  const [linkedOwned, setLinkedOwned] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [savingAs, setSavingAs] = useState(false);
   const [newName, setNewName] = useState("");
@@ -51,6 +52,7 @@ export default function CheckPolicyModal({
         setLinkedId(p.templateId ?? "");
         setLinkedName(p.templateName ?? "");
         setDocsUsing(p.docsUsingTemplate ?? 0);
+        setLinkedOwned(p.templateId ? Boolean(p.templateOwned) : true);
         setDirty(false);
       })
       .catch(() => {
@@ -86,6 +88,7 @@ export default function CheckPolicyModal({
     setLinkedId(t.id);
     setLinkedName(t.name);
     setDocsUsing(t.docsUsing ?? 0);
+    setLinkedOwned(true);
     setDirty(false); // freshly loaded from the template
     setAdding(false);
   }
@@ -226,9 +229,14 @@ export default function CheckPolicyModal({
                 {docsUsing === 1 ? "" : "s"}
               </span>
             )}
-            {linkedId && !dirty && (
+            {linkedId && !dirty && linkedOwned && (
               <span className="text-faint">
                 edits here can update every linked doc
+              </span>
+            )}
+            {linkedId && !linkedOwned && (
+              <span className="text-faint">
+                set by another user — you can fork, not edit it
               </span>
             )}
           </div>
@@ -337,7 +345,16 @@ export default function CheckPolicyModal({
           >
             Cancel
           </button>
-          {linkedId && dirty ? (
+          {linkedId && !linkedOwned ? (
+            <button
+              onClick={saveInline}
+              disabled={busy || rules === null || !dirty}
+              className="text-sm px-4 py-1.5 rounded bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50"
+              title={`“${linkedName}” belongs to another user — you can only fork a private copy for this doc`}
+            >
+              {busy ? "Saving…" : "Fork for this doc"}
+            </button>
+          ) : linkedId && dirty ? (
             <>
               <button
                 onClick={saveInline}
