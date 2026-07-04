@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -85,6 +86,39 @@ func evaluateChecks(rules []models.CheckRule, content string) []models.CheckResu
 				res.Detail = fmt.Sprintf("heading %q is level %d (max %d)", worst, depth, r.MaxDepth)
 			} else {
 				res.Pass = true
+			}
+		case "forbidden_phrases":
+			lower := strings.ToLower(content)
+			var found []string
+			for _, ph := range r.Phrases {
+				if ph != "" && strings.Contains(lower, strings.ToLower(ph)) {
+					found = append(found, ph)
+				}
+			}
+			res.Pass = len(found) == 0
+			if !res.Pass {
+				res.Detail = "found: " + strings.Join(found, ", ")
+			}
+		case "term_spelling":
+			re, err := regexp.Compile(`(?i)` + wordBoundary(r.Term))
+			if err != nil {
+				res.Detail = "invalid term"
+				break
+			}
+			wrong := map[string]struct{}{}
+			for _, m := range re.FindAllString(content, -1) {
+				if m != r.Term {
+					wrong[m] = struct{}{}
+				}
+			}
+			res.Pass = len(wrong) == 0
+			if !res.Pass {
+				forms := make([]string, 0, len(wrong))
+				for w := range wrong {
+					forms = append(forms, w)
+				}
+				sortStrings(forms)
+				res.Detail = fmt.Sprintf("should be %q — found %s", r.Term, strings.Join(forms, ", "))
 			}
 		default:
 			res.Detail = "unknown rule kind"
@@ -172,6 +206,29 @@ func validateCheckRules(rules []models.CheckRule) ([]models.CheckRule, error) {
 				return nil, fmt.Errorf("rule %q: maxDepth must be 1-6", r.Label)
 			}
 			r.Sections, r.Pattern = nil, ""
+		case "forbidden_phrases":
+			var clean []string
+			for _, ph := range r.Phrases {
+				ph = strings.TrimSpace(ph)
+				if ph == "" {
+					continue
+				}
+				if len(ph) > 100 {
+					return nil, fmt.Errorf("rule %q: phrase too long (max 100)", r.Label)
+				}
+				clean = append(clean, ph)
+			}
+			if len(clean) == 0 || len(clean) > maxCheckSections {
+				return nil, fmt.Errorf("rule %q: needs 1-%d phrases", r.Label, maxCheckSections)
+			}
+			r.Phrases = clean
+			r.Sections, r.Pattern, r.MaxDepth = nil, "", 0
+		case "term_spelling":
+			r.Term = strings.TrimSpace(r.Term)
+			if len(r.Term) < 2 || len(r.Term) > 60 {
+				return nil, fmt.Errorf("rule %q: term must be 2-60 characters", r.Label)
+			}
+			r.Sections, r.Pattern, r.MaxDepth, r.Phrases = nil, "", 0, nil
 		default:
 			return nil, fmt.Errorf("rule %q: unknown kind %q", r.Label, r.Kind)
 		}
@@ -276,4 +333,74 @@ func (a *API) putCheckPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	a.hub.Broadcast(doc.ID, "reviews-updated")
 	writeJSON(w, http.StatusOK, policy)
+}
+
+// wordBoundary wraps a literal term with word boundaries where the
+// term's edges are word characters (\b next to punctuation never
+// matches, so only add it where it can).
+func wordBoundary(term string) string {
+	q := regexp.QuoteMeta(term)
+	if term == "" {
+		return q
+	}
+	if isWordChar(rune(term[0])) {
+		q = `\b` + q
+	}
+	if isWordChar(rune(term[len(term)-1])) {
+		q += `\b`
+	}
+	return q
+}
+
+func isWordChar(r rune) bool {
+	return r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+func sortStrings(s []string) { sort.Strings(s) }
+
+// previewDocChecks is POST /api/documents/:id/check-preview — runs a
+// candidate rule set against the doc WITHOUT saving, so the editor
+// can show live pass/fail while the user composes. Per-rule
+// validation: one broken rule reports its own error instead of
+// blocking the preview of the others.
+func (a *API) previewDocChecks(w http.ResponseWriter, r *http.Request) {
+	docID := mux.Vars(r)["id"]
+	doc, accErr := a.checkDocAccess(r, docID)
+	if accErr != nil {
+		a.writeAccessError(w, r, accErr)
+		return
+	}
+	if a.currentUser(r) == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	capBody(w, r, maxBodyDefault)
+	var req struct {
+		Rules []models.CheckRule `json:"rules"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(req.Rules) > maxCheckRules {
+		writeError(w, http.StatusBadRequest, "too many rules")
+		return
+	}
+	out := make([]models.CheckResult, 0, len(req.Rules))
+	for i, rule := range req.Rules {
+		valid, err := validateCheckRules([]models.CheckRule{rule})
+		if err != nil {
+			out = append(out, models.CheckResult{
+				RuleID: rule.ID, Label: rule.Label, Kind: rule.Kind,
+				Pass: false, Detail: err.Error(),
+			})
+			continue
+		}
+		res := evaluateChecks(valid, doc.Content)[0]
+		if res.RuleID == "" {
+			res.RuleID = fmt.Sprintf("preview-%d", i)
+		}
+		out = append(out, res)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": out})
 }

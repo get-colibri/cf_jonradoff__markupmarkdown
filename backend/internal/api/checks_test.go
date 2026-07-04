@@ -56,3 +56,34 @@ func TestValidateCheckRules(t *testing.T) {
 		t.Errorf("normalization failed: %+v err=%v", out, err)
 	}
 }
+
+func TestEvaluateChecks_FriendlyKinds(t *testing.T) {
+	doc := "# Notes\n\nOur beamable SDK and BEAMABLE portal ship with Beamable branding.\nWe will fix this ASAP, it's still TBD.\n"
+	rules := []models.CheckRule{
+		{ID: "s", Kind: "term_spelling", Label: "Spelling", Term: "Beamable"},
+		{ID: "p", Kind: "forbidden_phrases", Label: "Placeholders", Phrases: []string{"TBD", "lorem ipsum"}},
+		{ID: "p2", Kind: "forbidden_phrases", Label: "Clean", Phrases: []string{"nonexistent phrase"}},
+	}
+	res := evaluateChecks(rules, doc)
+	byID := map[string]models.CheckResult{}
+	for _, r := range res {
+		byID[r.RuleID] = r
+	}
+	if byID["s"].Pass {
+		t.Errorf("term_spelling should fail: %+v", byID["s"])
+	}
+	if !strings.Contains(byID["s"].Detail, "beamable") || !strings.Contains(byID["s"].Detail, "BEAMABLE") {
+		t.Errorf("expected both wrong casings in detail, got %q", byID["s"].Detail)
+	}
+	if byID["p"].Pass || !strings.Contains(byID["p"].Detail, "TBD") {
+		t.Errorf("forbidden_phrases should flag TBD: %+v", byID["p"])
+	}
+	if !byID["p2"].Pass {
+		t.Errorf("clean phrase list should pass: %+v", byID["p2"])
+	}
+	// Correct-only doc passes spelling.
+	res2 := evaluateChecks(rules[:1], "# Notes\n\nBeamable everywhere, Beamable always.\n")
+	if !res2[0].Pass {
+		t.Errorf("all-correct casing should pass: %+v", res2[0])
+	}
+}

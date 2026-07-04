@@ -291,6 +291,10 @@ type ReviewSubscription struct {
 //   - forbidden_text: Pattern (Go regex) must NOT match anywhere.
 //   - required_text: Pattern (Go regex) MUST match somewhere.
 //   - max_heading_depth: no heading deeper than MaxDepth.
+//   - forbidden_phrases: none of Phrases may appear (case-insensitive
+//     literal match — the no-regex ban list).
+//   - term_spelling: every occurrence of Term (matched loosely) must
+//     use exactly Term's casing.
 type CheckRule struct {
 	ID    string `bson:"id" json:"id"`
 	Kind  string `bson:"kind" json:"kind"`
@@ -299,6 +303,13 @@ type CheckRule struct {
 	Sections []string `bson:"sections,omitempty" json:"sections,omitempty"`
 	Pattern  string   `bson:"pattern,omitempty" json:"pattern,omitempty"`
 	MaxDepth int      `bson:"max_depth,omitempty" json:"maxDepth,omitempty"`
+	// Phrases: literal strings (case-insensitive) for forbidden_phrases
+	// — the no-regex path for "never say X".
+	Phrases []string `bson:"phrases,omitempty" json:"phrases,omitempty"`
+	// Term: the exact required casing for term_spelling — flags any
+	// occurrence whose casing differs (e.g. Term "Beamable" fails on
+	// "beamable" / "BEAMABLE").
+	Term string `bson:"term,omitempty" json:"term,omitempty"`
 }
 
 // CheckPolicy is the set of lint rules for a revision CHAIN (anchored

@@ -110,11 +110,21 @@ export interface AdminRecentDoc {
 /** One deterministic lint rule in a doc chain's check policy. */
 export interface CheckRule {
   id?: string;
-  kind: "required_sections" | "forbidden_text" | "required_text" | "max_heading_depth";
+  kind:
+    | "required_sections"
+    | "forbidden_text"
+    | "required_text"
+    | "max_heading_depth"
+    | "forbidden_phrases"
+    | "term_spelling";
   label: string;
   sections?: string[];
   pattern?: string;
   maxDepth?: number;
+  /** Literal case-insensitive ban list — the no-regex path. */
+  phrases?: string[];
+  /** Exact required casing for term_spelling. */
+  term?: string;
 }
 
 export interface CheckResult {

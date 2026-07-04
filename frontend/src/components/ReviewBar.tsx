@@ -264,6 +264,7 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
       {showChecksEditor && (
         <CheckPolicyModal
           documentId={doc.id}
+          docContent={doc.content}
           onClose={() => setShowChecksEditor(false)}
           onSaved={() => {
             api.getDocChecks(doc.id).then(setChecks).catch(() => {});

@@ -138,6 +138,7 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/documents/{id}/checks", a.getDocChecks).Methods("GET")
 	r.HandleFunc("/api/documents/{id}/check-policy", a.getCheckPolicy).Methods("GET")
 	r.HandleFunc("/api/documents/{id}/check-policy", a.putCheckPolicy).Methods("PUT")
+	r.HandleFunc("/api/documents/{id}/check-preview", a.previewDocChecks).Methods("POST")
 
 	// Superuser console. Gated by MARKUPMARKDOWN_ADMIN_LOGINS (env
 	// allowlist of GitHub logins), cookie-session only — see admin.go.

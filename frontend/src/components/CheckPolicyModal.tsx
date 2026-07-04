@@ -1,70 +1,76 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, APIError } from "../api";
 import { useToast } from "./Toast";
-import type { CheckRule } from "../types";
+import type { CheckResult, CheckRule } from "../types";
 
-const KIND_META: Record<
-  CheckRule["kind"],
-  { label: string; hint: string }
-> = {
-  required_sections: {
-    label: "Required sections",
-    hint: "Headings that must exist (any level, case-insensitive). One per line.",
-  },
-  forbidden_text: {
-    label: "Forbidden text",
-    hint: "Go regex that must NOT match — e.g. \\bbeamable\\b to ban the lowercase brand.",
-  },
-  required_text: {
-    label: "Required text",
-    hint: "Go regex that MUST match somewhere in the doc.",
-  },
-  max_heading_depth: {
-    label: "Max heading depth",
-    hint: "Fail when any heading is deeper than this level (1–6).",
-  },
-};
-
-/** Editor for the chain's check policy — the lint rules rendered as
- * CI-style chips on every revision. Saving an empty list removes the
- * policy. */
+/** Preset-driven editor for the chain's check policy. Design goals,
+ * in order: (1) zero required regex — the common cases are wizards
+ * over plain words; (2) live pass/fail preview against THIS doc while
+ * composing, so you see a rule work before saving; (3) presets
+ * harvested from the doc itself (section checkboxes come from its
+ * actual headings). Raw regex survives as one "Advanced" preset. */
 export default function CheckPolicyModal({
   documentId,
+  docContent,
   onClose,
   onSaved,
 }: {
   documentId: string;
+  docContent: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const toast = useToast();
   const [rules, setRules] = useState<CheckRule[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [preview, setPreview] = useState<CheckResult[]>([]);
+  const previewTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api
       .getCheckPolicy(documentId)
       .then((p) => {
-        if (!cancelled) setRules(p.rules ?? []);
+        if (cancelled) return;
+        setRules(p.rules ?? []);
+        setAdding((p.rules ?? []).length === 0);
       })
       .catch(() => {
-        if (!cancelled) setRules([]);
+        if (!cancelled) {
+          setRules([]);
+          setAdding(true);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [documentId]);
 
-  function update(i: number, patch: Partial<CheckRule>) {
-    setRules((rs) => rs!.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  }
+  // Live preview: every edit re-evaluates the whole candidate rule
+  // set against the doc, debounced. Results align to rules by index.
+  useEffect(() => {
+    if (!rules || rules.length === 0) {
+      setPreview([]);
+      return;
+    }
+    if (previewTimer.current != null) window.clearTimeout(previewTimer.current);
+    previewTimer.current = window.setTimeout(() => {
+      api
+        .previewChecks(documentId, rules)
+        .then((r) => setPreview(r.results))
+        .catch(() => setPreview([]));
+    }, 350);
+    return () => {
+      if (previewTimer.current != null) window.clearTimeout(previewTimer.current);
+    };
+  }, [rules, documentId]);
 
-  function addRule() {
-    setRules((rs) => [
-      ...(rs ?? []),
-      { kind: "required_sections", label: "", sections: [] },
-    ]);
+  const headings = useMemo(() => extractHeadings(docContent), [docContent]);
+
+  function addRule(r: CheckRule) {
+    setRules((rs) => [...(rs ?? []), r]);
+    setAdding(false);
   }
 
   async function save() {
@@ -72,9 +78,7 @@ export default function CheckPolicyModal({
     setBusy(true);
     try {
       await api.putCheckPolicy(documentId, rules);
-      toast.success(
-        rules.length === 0 ? "Checks removed" : "Checks saved"
-      );
+      toast.success(rules.length === 0 ? "Checks removed" : "Checks saved");
       onSaved();
       onClose();
     } catch (err) {
@@ -93,8 +97,8 @@ export default function CheckPolicyModal({
           <div>
             <h2 className="text-lg font-semibold">Checks</h2>
             <p className="text-xs text-muted">
-              Lint rules for this doc and all its revisions — results show as
-              pass/fail chips next to the review states.
+              Rules this doc (and every future revision) must pass — shown as
+              ✓/✗ chips. Each rule previews live against the current text.
             </p>
           </div>
           <button
@@ -108,99 +112,35 @@ export default function CheckPolicyModal({
 
         <div className="flex-1 min-h-0 overflow-auto p-5 space-y-3 text-sm">
           {rules === null && <div className="text-muted">Loading…</div>}
-          {rules !== null && rules.length === 0 && (
-            <div className="text-muted text-xs">
-              No rules yet — add one below. Ideas: required sections
-              (Overview, Security…), a terminology ban
-              (<code className="bg-soft px-1 rounded">\bbeamable\b</code>),
-              or a heading-depth cap.
-            </div>
-          )}
+
           {rules?.map((r, i) => (
-            <div key={r.id ?? i} className="border border-rule rounded-lg p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <select
-                  value={r.kind}
-                  onChange={(e) =>
-                    update(i, {
-                      kind: e.target.value as CheckRule["kind"],
-                      sections: [],
-                      pattern: "",
-                      maxDepth: e.target.value === "max_heading_depth" ? 3 : undefined,
-                    })
-                  }
-                  className="text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
-                >
-                  {(Object.keys(KIND_META) as CheckRule["kind"][]).map((k) => (
-                    <option key={k} value={k}>
-                      {KIND_META[k].label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  placeholder="Label (shown on the chip)"
-                  value={r.label}
-                  onChange={(e) => update(i, { label: e.target.value })}
-                  className="flex-1 text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
-                />
-                <button
-                  onClick={() => setRules((rs) => rs!.filter((_, j) => j !== i))}
-                  className="text-muted hover:text-danger text-xs shrink-0"
-                  title="Remove rule"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="text-[11px] text-faint">{KIND_META[r.kind].hint}</div>
-              {r.kind === "required_sections" && (
-                <textarea
-                  rows={2}
-                  value={(r.sections ?? []).join("\n")}
-                  onChange={(e) =>
-                    update(i, {
-                      sections: e.target.value
-                        .split("\n")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder={"Overview\nSecurity"}
-                  className="w-full text-xs font-mono border border-rule rounded px-2 py-1 bg-card text-ink resize-y"
-                />
-              )}
-              {(r.kind === "forbidden_text" || r.kind === "required_text") && (
-                <input
-                  type="text"
-                  value={r.pattern ?? ""}
-                  onChange={(e) => update(i, { pattern: e.target.value })}
-                  placeholder={"\\bbeamable\\b"}
-                  className="w-full text-xs font-mono border border-rule rounded px-2 py-1 bg-card text-ink"
-                />
-              )}
-              {r.kind === "max_heading_depth" && (
-                <select
-                  value={r.maxDepth ?? 3}
-                  onChange={(e) => update(i, { maxDepth: Number(e.target.value) })}
-                  className="text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
-                >
-                  {[1, 2, 3, 4, 5, 6].map((d) => (
-                    <option key={d} value={d}>
-                      up to h{d}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+            <RuleCard
+              key={r.id ?? i}
+              rule={r}
+              result={preview[i]}
+              headings={headings}
+              onChange={(patch) =>
+                setRules((rs) => rs!.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+              }
+              onRemove={() => setRules((rs) => rs!.filter((_, j) => j !== i))}
+            />
           ))}
-          {rules !== null && (
-            <button
-              onClick={addRule}
-              className="text-xs px-2.5 py-1.5 rounded border border-dashed border-rule text-muted hover:text-ink hover:border-ink w-full"
-            >
-              + Add rule
-            </button>
-          )}
+
+          {rules !== null &&
+            (adding ? (
+              <PresetGallery
+                headings={headings}
+                onPick={addRule}
+                onCancel={rules.length > 0 ? () => setAdding(false) : undefined}
+              />
+            ) : (
+              <button
+                onClick={() => setAdding(true)}
+                className="text-xs px-2.5 py-1.5 rounded border border-dashed border-rule text-muted hover:text-ink hover:border-ink w-full"
+              >
+                + Add a check
+              </button>
+            ))}
         </div>
 
         <div className="px-5 py-3 border-t border-rule flex items-center justify-end gap-2 shrink-0">
@@ -222,4 +162,334 @@ export default function CheckPolicyModal({
       </div>
     </div>
   );
+}
+
+/* ---------- preset gallery ---------- */
+
+function PresetGallery({
+  headings,
+  onPick,
+  onCancel,
+}: {
+  headings: string[];
+  onPick: (r: CheckRule) => void;
+  onCancel?: () => void;
+}) {
+  const presets: { title: string; desc: string; make: () => CheckRule }[] = [
+    {
+      title: "📑 Required sections",
+      desc: "Pick headings this doc must always keep.",
+      make: () => ({
+        kind: "required_sections",
+        label: "Sections",
+        // Start with the doc's current headings pre-ticked — editing
+        // is unticking, not typing.
+        sections: headings.slice(0, 8),
+      }),
+    },
+    {
+      title: "🚫 No placeholder text",
+      desc: "Fails on TBD, TODO, FIXME, XXX, lorem ipsum.",
+      make: () => ({
+        kind: "forbidden_phrases",
+        label: "No placeholders",
+        phrases: ["TBD", "TODO", "FIXME", "XXX", "lorem ipsum"],
+      }),
+    },
+    {
+      title: "🔤 Exact spelling of a term",
+      desc: "e.g. always “Beamable”, never “beamable”.",
+      make: () => ({ kind: "term_spelling", label: "Spelling", term: "" }),
+    },
+    {
+      title: "🙊 Banned words or phrases",
+      desc: "Plain words, one per line — no patterns needed.",
+      make: () => ({ kind: "forbidden_phrases", label: "Banned phrases", phrases: [] }),
+    },
+    {
+      title: "🪜 Heading depth limit",
+      desc: "Keep structure sane — no h5/h6 rabbit holes.",
+      make: () => ({ kind: "max_heading_depth", label: "Heading depth", maxDepth: 4 }),
+    },
+    {
+      title: "⚙️ Advanced (regex)",
+      desc: "Require or forbid a custom pattern.",
+      make: () => ({ kind: "forbidden_text", label: "Custom rule", pattern: "" }),
+    },
+  ];
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Add a check
+        </div>
+        {onCancel && (
+          <button onClick={onCancel} className="text-xs text-muted hover:text-ink">
+            cancel
+          </button>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {presets.map((p) => (
+          <button
+            key={p.title}
+            onClick={() => onPick(p.make())}
+            className="text-left border border-rule rounded-lg p-3 hover:border-accent hover:bg-accent-soft/30 transition"
+          >
+            <div className="text-sm font-medium text-ink">{p.title}</div>
+            <div className="text-xs text-muted mt-0.5">{p.desc}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- one rule card with live status ---------- */
+
+function RuleCard({
+  rule,
+  result,
+  headings,
+  onChange,
+  onRemove,
+}: {
+  rule: CheckRule;
+  result?: CheckResult;
+  headings: string[];
+  onChange: (patch: Partial<CheckRule>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="border border-rule rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={rule.label}
+          onChange={(e) => onChange({ label: e.target.value })}
+          className="flex-1 text-sm font-medium border-0 bg-transparent text-ink focus:outline-none"
+          placeholder="Name this check"
+        />
+        {result && (
+          <span
+            title={result.detail || "Passing on the current text"}
+            className={
+              "text-[11px] px-2 py-0.5 rounded-full border cursor-help " +
+              (result.pass
+                ? "border-success/40 text-success"
+                : "border-danger/40 text-danger")
+            }
+          >
+            {result.pass ? "✓ passing now" : "✗ failing now"}
+          </span>
+        )}
+        <button
+          onClick={onRemove}
+          className="text-muted hover:text-danger text-xs shrink-0"
+          title="Remove this check"
+        >
+          ✕
+        </button>
+      </div>
+      {result && !result.pass && result.detail && (
+        <div className="text-[11px] text-danger/90">{result.detail}</div>
+      )}
+
+      {rule.kind === "required_sections" && (
+        <SectionPicker
+          headings={headings}
+          selected={rule.sections ?? []}
+          onChange={(sections) => onChange({ sections })}
+        />
+      )}
+      {rule.kind === "forbidden_phrases" && (
+        <div>
+          <div className="text-[11px] text-faint mb-1">
+            Words or phrases that must NOT appear (case doesn't matter). One
+            per line.
+          </div>
+          <textarea
+            rows={3}
+            value={(rule.phrases ?? []).join("\n")}
+            onChange={(e) =>
+              onChange({ phrases: e.target.value.split("\n") })
+            }
+            onBlur={(e) =>
+              onChange({
+                phrases: e.target.value
+                  .split("\n")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              })
+            }
+            placeholder={"TBD\nas we all know"}
+            className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink resize-y"
+          />
+        </div>
+      )}
+      {rule.kind === "term_spelling" && (
+        <div>
+          <div className="text-[11px] text-faint mb-1">
+            The exact spelling and capitalization. Any other casing of the
+            same word fails the check.
+          </div>
+          <input
+            type="text"
+            value={rule.term ?? ""}
+            onChange={(e) => onChange({ term: e.target.value })}
+            placeholder="Beamable"
+            className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
+          />
+        </div>
+      )}
+      {rule.kind === "max_heading_depth" && (
+        <div className="flex items-center gap-2 text-xs text-muted">
+          Deepest heading allowed:
+          <select
+            value={rule.maxDepth ?? 4}
+            onChange={(e) => onChange({ maxDepth: Number(e.target.value) })}
+            className="text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
+          >
+            {[1, 2, 3, 4, 5, 6].map((d) => (
+              <option key={d} value={d}>
+                h{d}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {(rule.kind === "forbidden_text" || rule.kind === "required_text") && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-[11px] text-faint">
+            <select
+              value={rule.kind}
+              onChange={(e) => onChange({ kind: e.target.value as CheckRule["kind"] })}
+              className="text-xs border border-rule rounded px-1.5 py-0.5 bg-card text-ink"
+            >
+              <option value="forbidden_text">Must NOT match</option>
+              <option value="required_text">Must match</option>
+            </select>
+            <span>
+              Go regex — the live chip above tells you if it works.
+            </span>
+          </div>
+          <input
+            type="text"
+            value={rule.pattern ?? ""}
+            onChange={(e) => onChange({ pattern: e.target.value })}
+            placeholder={"\\bdeprecated\\b"}
+            className="w-full text-xs font-mono border border-rule rounded px-2 py-1 bg-card text-ink"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- section picker: checkboxes over the doc's own headings ---------- */
+
+function SectionPicker({
+  headings,
+  selected,
+  onChange,
+}: {
+  headings: string[];
+  selected: string[];
+  onChange: (sections: string[]) => void;
+}) {
+  const [extra, setExtra] = useState("");
+  const known = new Set(headings.map((h) => h.toLowerCase()));
+  const custom = selected.filter((s) => !known.has(s.toLowerCase()));
+
+  function toggle(h: string) {
+    const has = selected.some((s) => s.toLowerCase() === h.toLowerCase());
+    onChange(
+      has
+        ? selected.filter((s) => s.toLowerCase() !== h.toLowerCase())
+        : [...selected, h]
+    );
+  }
+
+  return (
+    <div>
+      <div className="text-[11px] text-faint mb-1">
+        Tick the headings every revision must keep — pulled from this doc.
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {headings.map((h) => {
+          const on = selected.some((s) => s.toLowerCase() === h.toLowerCase());
+          return (
+            <button
+              key={h}
+              onClick={() => toggle(h)}
+              className={
+                "text-xs px-2 py-0.5 rounded-full border transition " +
+                (on
+                  ? "border-accent bg-accent-soft text-ink"
+                  : "border-rule text-muted hover:text-ink")
+              }
+            >
+              {on ? "✓ " : ""}
+              {h}
+            </button>
+          );
+        })}
+        {custom.map((h) => (
+          <button
+            key={h}
+            onClick={() => toggle(h)}
+            className="text-xs px-2 py-0.5 rounded-full border border-accent bg-accent-soft text-ink"
+            title="Required but not present in the current doc"
+          >
+            ✓ {h} ⚠
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <input
+          type="text"
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && extra.trim()) {
+              onChange([...selected, extra.trim()]);
+              setExtra("");
+            }
+          }}
+          placeholder="Require a heading that doesn't exist yet…"
+          className="flex-1 text-xs border border-rule rounded px-2 py-1 bg-card text-ink"
+        />
+        <button
+          onClick={() => {
+            if (extra.trim()) {
+              onChange([...selected, extra.trim()]);
+              setExtra("");
+            }
+          }}
+          className="text-xs px-2 py-1 rounded border border-rule text-muted hover:text-ink"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- tiny client-side heading extractor (mirrors backend) ---------- */
+
+function extractHeadings(content: string): string[] {
+  const out: string[] = [];
+  let inFence = false;
+  for (const line of content.split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("```") || t.startsWith("~~~")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const m = /^(#{1,6})\s+(.+)$/.exec(t);
+    if (m) out.push(m[2].trim());
+  }
+  // Dedup, keep order.
+  return [...new Set(out)];
 }

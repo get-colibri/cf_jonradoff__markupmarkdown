@@ -20,6 +20,7 @@ import type {
   AdminRecentDoc,
   AdminUserRow,
   CheckPolicy,
+  CheckResult,
   CheckRule,
   DocChecksResponse,
   Review,
@@ -567,6 +568,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ rules }),
     }),
+  /** Evaluate a candidate rule set WITHOUT saving — powers the live
+   * pass/fail preview in the checks editor. Results align by index. */
+  previewChecks: (documentId: string, rules: CheckRule[]) =>
+    req<{ results: CheckResult[] }>(
+      `/api/documents/${documentId}/check-preview`,
+      { method: "POST", body: JSON.stringify({ rules }) }
+    ),
 
   /** Standing reviewers on this doc's chain (Phase 2b). */
   listReviewSubscriptions: (documentId: string) =>
