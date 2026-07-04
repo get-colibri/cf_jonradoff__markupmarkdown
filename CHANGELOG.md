@@ -8,6 +8,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Agent activity status + notifications.** You can now always tell
+  what the auto-reviewer is doing. A ⚡ indicator in the top nav
+  pulses while runs are in flight (with a count), and its dropdown
+  lists the last 24h of summoned runs: running ("reviewing now…"),
+  done with the outcome ("approved · no issues found", "requested
+  changes · 3 suggestions"), or failed with the reason. Every run
+  also lands a bell notification — including failures, which
+  previously evaporated silently, and including runs where you own
+  the reviewing token (the old fan-out treated your bot as "you" and
+  suppressed the self-notification).
 - **Index-level agent audits.** On any index, "Agent audit" summons
   one of your tokens across every file matching a pattern (`_PRD`,
   or empty for everything): one click mints review requests for each

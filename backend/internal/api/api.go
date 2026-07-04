@@ -124,6 +124,7 @@ func (a *API) Register(r *mux.Router) {
 	// review_requests.go for the delivery model).
 	r.HandleFunc("/api/documents/{id}/review-requests", a.createReviewRequest).Methods("POST")
 	r.HandleFunc("/api/me/review-requests", a.listMyReviewRequests).Methods("GET")
+	r.HandleFunc("/api/me/agent-activity", a.listAgentActivity).Methods("GET")
 	r.HandleFunc("/api/review-requests/{id}/dismiss", a.dismissReviewRequest).Methods("POST")
 	r.HandleFunc("/api/documents/{id}/review-requests", a.listDocReviewRequests).Methods("GET")
 

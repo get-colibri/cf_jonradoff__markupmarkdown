@@ -410,6 +410,16 @@ type ReviewRequest struct {
 	// this request up — the claim that prevents double-fulfillment and
 	// burn loops (one attempt per request per 24h).
 	AutoAttemptedAt *time.Time `bson:"auto_attempted_at,omitempty" json:"-"`
+	// Auto-run status reporting (the "is it running? did it find
+	// anything?" surface): running | done | failed. Empty for
+	// requests never touched by the auto-reviewer.
+	AutoStatus string `bson:"auto_status,omitempty" json:"autoStatus,omitempty"`
+	// AutoResultState / AutoSuggestions summarize a done run ("approved,
+	// 0 suggestions" answers 'finished with no comments').
+	AutoResultState string `bson:"auto_result_state,omitempty" json:"autoResultState,omitempty"`
+	AutoSuggestions int    `bson:"auto_suggestions,omitempty" json:"autoSuggestions,omitempty"`
+	// AutoError is a short human-readable failure reason.
+	AutoError string `bson:"auto_error,omitempty" json:"autoError,omitempty"`
 }
 
 // UserSecrets holds per-user encrypted credentials. One document per user.
@@ -426,6 +436,10 @@ const (
 	// sent to the doc owner and any requester whose request just
 	// completed.
 	NotifyReviewState NotificationKind = "review_state"
+	// NotifyAutoReview: the server-side reviewer finished (or failed)
+	// a run the user summoned. Sent to the requester even when they
+	// own the reviewing token — the bot acting isn't "self".
+	NotifyAutoReview NotificationKind = "auto_review"
 )
 
 // Notification is an in-app pulled-by-the-bell-icon record.

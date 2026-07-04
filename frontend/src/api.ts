@@ -18,6 +18,7 @@ import type {
   PushbackResult,
   AdminOverview,
   AdminRecentDoc,
+  AgentActivityItem,
   AdminUserRow,
   CheckPolicy,
   CheckResult,
@@ -555,6 +556,11 @@ export const api = {
     }),
   /** Pending review requests targeting the current identity. */
   listMyReviewRequests: () => req<ReviewRequest[]>(`/api/me/review-requests`),
+  /** Last-24h auto-review runs the caller summoned (top-nav ⚡). */
+  getAgentActivity: () =>
+    req<{ running: number; items: AgentActivityItem[] }>(
+      "/api/me/agent-activity"
+    ),
   /** Pending review requests ON a doc — the "awaiting X" chips that
    * stop anyone from re-requesting a review that's already out. */
   listDocReviewRequests: (documentId: string) =>

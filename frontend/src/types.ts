@@ -172,9 +172,23 @@ export interface CheckTemplate {
   docsUsing?: number;
 }
 
+/** One auto-review run for the top-nav agent indicator. */
+export interface AgentActivityItem {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  reviewerName: string;
+  autoStatus: "running" | "done" | "failed" | "";
+  autoResultState?: string;
+  autoSuggestions?: number;
+  autoError?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface NotificationItem {
   id: string;
-  kind: "mention" | "reply" | "review_request" | "review_state";
+  kind: "mention" | "reply" | "review_request" | "review_state" | "auto_review";
   documentId: string;
   documentTitle: string;
   commentId: string;

@@ -7,6 +7,7 @@ import GitHubResolve from "./pages/GitHubResolve";
 import AuthorBadge from "./components/AuthorBadge";
 import ThemeToggle from "./components/ThemeToggle";
 import NotificationBell from "./components/NotificationBell";
+import AgentActivity from "./components/AgentActivity";
 import Footer from "./components/Footer";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
             markupmarkdown
           </Link>
           <div className="flex items-center gap-3">
+            <AgentActivity />
             <NotificationBell />
             <ThemeToggle />
             <AuthorBadge />

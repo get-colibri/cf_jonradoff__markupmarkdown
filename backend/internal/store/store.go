@@ -428,11 +428,45 @@ func (s *Store) ClaimAutoReviewAttempt(ctx context.Context, id string) (bool, er
 				{"auto_attempted_at": bson.M{"$lt": cutoff}},
 			},
 		},
-		bson.M{"$set": bson.M{"auto_attempted_at": time.Now().UTC()}})
+		bson.M{"$set": bson.M{
+			"auto_attempted_at": time.Now().UTC(),
+			"auto_status":       "running",
+		}, "$unset": bson.M{"auto_error": "", "auto_result_state": "", "auto_suggestions": ""}})
 	if err != nil {
 		return false, err
 	}
 	return res.ModifiedCount > 0, nil
+}
+
+// MarkAutoReviewDone records a successful run's summary.
+func (s *Store) MarkAutoReviewDone(ctx context.Context, id, resultState string, suggestions int) error {
+	_, err := s.ReviewRequests().UpdateOne(ctx, bson.M{"_id": id},
+		bson.M{"$set": bson.M{
+			"auto_status":       "done",
+			"auto_result_state": resultState,
+			"auto_suggestions":  suggestions,
+		}})
+	return err
+}
+
+// MarkAutoReviewFailed records a failed run with a short reason.
+func (s *Store) MarkAutoReviewFailed(ctx context.Context, id, reason string) error {
+	if len(reason) > 300 {
+		reason = reason[:300]
+	}
+	_, err := s.ReviewRequests().UpdateOne(ctx, bson.M{"_id": id},
+		bson.M{"$set": bson.M{"auto_status": "failed", "auto_error": reason}})
+	return err
+}
+
+// ListAgentActivityForUser powers the top-nav agent indicator: the
+// caller's summoned auto-runs from the last 24h, newest first.
+func (s *Store) ListAgentActivityForUser(ctx context.Context, userID string) ([]models.ReviewRequest, error) {
+	return s.listReviewRequests(ctx, bson.M{
+		"requester_id": userID,
+		"auto_status":  bson.M{"$exists": true, "$ne": ""},
+		"created_at":   bson.M{"$gte": time.Now().UTC().Add(-24 * time.Hour)},
+	})
 }
 
 // UpsertCheckPolicy replaces the rule set for a chain root.

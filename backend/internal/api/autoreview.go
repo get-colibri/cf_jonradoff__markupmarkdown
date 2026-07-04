@@ -15,13 +15,19 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"markupmarkdown/internal/ai"
 	"markupmarkdown/internal/httperr"
 	"markupmarkdown/internal/models"
 )
+
+func newUUID() string        { return uuid.NewString() }
+func timeNowUTC() time.Time  { return time.Now().UTC() }
 
 // autoReviewSweepInterval is the crash-recovery cadence. The fast path
 // is the enqueue channel; the sweep only catches requests minted right
@@ -137,6 +143,7 @@ func (a *API) processAutoReview(requestID string) {
 
 	doc, err := a.store.GetDocument(ctx, rr.DocumentID)
 	if err != nil || doc == nil || doc.DeletedAt != nil {
+		_ = a.store.MarkAutoReviewFailed(ctx, requestID, "document unavailable")
 		return
 	}
 
@@ -166,7 +173,13 @@ func (a *API) processAutoReview(requestID string) {
 	result, err := reviewFn(ctx, apiKey, doc.Title, doc.Content, openThreads)
 	if err != nil {
 		_, _ = httperr.Log("autoreview.claude", err)
-		return // claim already burned — no retry loop on a failing doc
+		// Claim already burned — no retry loop on a failing doc. But
+		// the failure must be VISIBLE: status + a notification, so a
+		// summoned review never just silently evaporates.
+		_ = a.store.MarkAutoReviewFailed(ctx, requestID, shortAIError(err))
+		a.notifyAutoReview(ctx, rr, owner.ID, token.Label,
+			"auto-review failed: "+shortAIError(err))
+		return
 	}
 
 	// Apply suggestions through the same validated path MCP uses. A
@@ -193,9 +206,56 @@ func (a *API) processAutoReview(requestID string) {
 	}
 	if _, err := a.SetReviewState(ctx, owner.ID, doc.ID, result.State, note, token.ID); err != nil {
 		_, _ = httperr.Log("autoreview.set_state", err)
+		_ = a.store.MarkAutoReviewFailed(ctx, requestID, "couldn't record the review state")
 		return
 	}
+	_ = a.store.MarkAutoReviewDone(ctx, requestID, result.State, applied)
 	a.logTokenAction(ctx, token.ID, "review.auto", doc.ID)
+
+	// Tell the summoner what happened — including "finished with no
+	// comments". The generic review fan-out skips reviewer==requester
+	// (right for humans, wrong for a bot acting on your behalf), so
+	// the auto path notifies directly.
+	verb := map[string]string{
+		"approved":          "approved",
+		"changes_requested": "requested changes",
+		"commented":         "left comments",
+	}[result.State]
+	summary := "auto-review " + verb
+	if applied > 0 {
+		summary += fmt.Sprintf(" · %d suggestion(s)", applied)
+	} else if result.State == "approved" {
+		summary += " · no issues found"
+	}
+	a.notifyAutoReview(ctx, rr, owner.ID, token.Label, summary)
+}
+
+// notifyAutoReview inserts the summoner's bell notification for a
+// finished (or failed) auto-run.
+func (a *API) notifyAutoReview(ctx context.Context, rr *models.ReviewRequest, requesterID, tokenLabel, preview string) {
+	n := &models.Notification{
+		ID:            newUUID(),
+		UserID:        requesterID,
+		Kind:          models.NotifyAutoReview,
+		DocumentID:    rr.DocumentID,
+		DocumentTitle: rr.DocumentTitle,
+		ActorName:     tokenLabel,
+		Preview:       preview,
+		CreatedAt:     timeNowUTC(),
+	}
+	if err := a.store.InsertNotification(ctx, n); err != nil {
+		_, _ = httperr.Log("notifications.auto_review", err)
+	}
+}
+
+// shortAIError trims an AI-client error to a bell-notification-sized
+// human string.
+func shortAIError(err error) string {
+	msg := err.Error()
+	if len(msg) > 140 {
+		msg = msg[:140] + "…"
+	}
+	return msg
 }
 
 // RunAutoReviewSweepForTest runs one synchronous sweep. Test-only —

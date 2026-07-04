@@ -275,3 +275,30 @@ func (a *API) fanOutReviewStateNotifications(doc *models.Document, reviewer *mod
 		}
 	}()
 }
+
+// listAgentActivity is GET /api/me/agent-activity — the top-nav
+// "what is my reviewer doing" surface: the caller's summoned
+// auto-runs from the last 24h (running / done / failed), newest
+// first. Cookie or token auth; scoped to the caller as requester.
+func (a *API) listAgentActivity(w http.ResponseWriter, r *http.Request) {
+	user := a.currentUser(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "sign in required")
+		return
+	}
+	out, err := a.store.ListAgentActivityForUser(r.Context(), user.ID)
+	if err != nil {
+		internalError(w, "store.list_agent_activity", err)
+		return
+	}
+	if out == nil {
+		out = []models.ReviewRequest{}
+	}
+	running := 0
+	for _, rr := range out {
+		if rr.AutoStatus == "running" {
+			running++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"running": running, "items": out})
+}

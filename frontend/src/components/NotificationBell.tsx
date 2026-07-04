@@ -173,7 +173,9 @@ export default function NotificationBell() {
                                 ? // Preview carries the specific verb
                                   // ("approved this document", …).
                                   "reviewed"
-                                : "replied in"}{" "}
+                                : n.kind === "auto_review"
+                                  ? "finished on" // preview carries the outcome
+                                  : "replied in"}{" "}
                           <span className="text-accent">{n.documentTitle}</span>
                         </div>
                         <div className="text-xs text-muted line-clamp-2 mt-0.5">
