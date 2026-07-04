@@ -7,6 +7,8 @@ package api_test
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -340,5 +342,60 @@ func TestIndexPolicyRules_CreatorScopeAndAutoApply(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if p, _ := st.GetCheckPolicy(context.Background(), miss.ID); p != nil {
 		t.Errorf("non-matching doc got a policy: %+v", p)
+	}
+}
+
+func TestIndexAudit_MintsRequestsForMatchingDocs(t *testing.T) {
+	// Mock GitHub so the docs read as PUBLIC (checkDocAccess probes
+	// raw.githubusercontent reachability for github-sourced docs).
+	restore := ghMock(t, func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(strings.NewReader("# ok\n")),
+			Header:     make(http.Header),
+			Request:    req,
+		}
+	})
+	defer restore()
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	other := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	_, tok := testutil.NewAPIToken(t, st, user.ID, models.TokenScopeWrite)
+	_, otherTok := testutil.NewAPIToken(t, st, other.ID, models.TokenScopeWrite)
+
+	idx := testutil.NewTestIndex(t, st, other.ID, "acme", "docs") // NOT user's index — audits aren't creator-gated
+	match := testutil.NewTestGitHubDocument(t, st, user.ID, "acme", "docs", "main", "WINGMAN_PRD.md")
+	testutil.NewTestGitHubDocument(t, st, user.ID, "acme", "docs", "main", "README.md")
+
+	// Seed the items cache with both files + one unopened file.
+	items := `[
+	  {"title":"WINGMAN_PRD.md","url":"https://github.com/acme/docs/blob/main/WINGMAN_PRD.md"},
+	  {"title":"README.md","url":"https://github.com/acme/docs/blob/main/README.md"},
+	  {"title":"OTHER_PRD.md","url":"https://github.com/acme/docs/blob/main/OTHER_PRD.md"}
+	]`
+	if err := st.SetCachedIndexItems(context.Background(), idx.ID, []byte(items), false, ""); err != nil {
+		t.Fatalf("seed items: %v", err)
+	}
+
+	// Someone else's token → 404.
+	status, _ := doJSON(t, srv, "POST", "/api/indexes/"+idx.ID+"/audit",
+		map[string]string{"tokenId": otherTok.ID, "pattern": "_PRD"}, withCookie(sess))
+	if status != 404 {
+		t.Errorf("other-token audit status=%d want 404", status)
+	}
+
+	// Own token, _PRD pattern: 1 opened match requested, 1 pending.
+	status, body := doJSON(t, srv, "POST", "/api/indexes/"+idx.ID+"/audit",
+		map[string]string{"tokenId": tok.ID, "pattern": "_PRD"}, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("audit status=%d body=%s", status, body)
+	}
+	if !strings.Contains(string(body), `"requested":1`) || !strings.Contains(string(body), `"pending":1`) {
+		t.Errorf("unexpected audit summary: %s", body)
+	}
+	pendingReqs, _ := st.ListPendingReviewRequestsForToken(context.Background(), tok.ID)
+	if len(pendingReqs) != 1 || pendingReqs[0].DocumentID != match.ID {
+		t.Errorf("expected one request on the _PRD doc, got %+v", pendingReqs)
 	}
 }

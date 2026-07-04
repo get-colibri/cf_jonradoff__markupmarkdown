@@ -8,6 +8,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Index-level agent audits.** On any index, "Agent audit" summons
+  one of your tokens across every file matching a pattern (`_PRD`,
+  or empty for everything): one click mints review requests for each
+  opened doc (max 50/run), auto-review tokens fulfill them within
+  minutes, and results land as review states + suggestions on each
+  doc. Per-user by design — you can only summon tokens you own, onto
+  docs you can access.
 - **Failing checks gate the push.** Third push gate alongside
   changes-requested reviews and unaccepted agent revisions: pushback
   returns 409 `checks_failing` when the revision fails its doc

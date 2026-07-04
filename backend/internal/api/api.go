@@ -149,6 +149,10 @@ func (a *API) Register(r *mux.Router) {
 	r.HandleFunc("/api/indexes/{id}/policy-rules", a.getIndexPolicyRules).Methods("GET")
 	r.HandleFunc("/api/indexes/{id}/policy-rules", a.putIndexPolicyRules).Methods("PUT")
 	r.HandleFunc("/api/indexes/{id}/policy-rules/apply", a.applyIndexPolicyRules).Methods("POST")
+	// Index-level agent audit: mint review requests for every matching
+	// file, targeting one of the CALLER's tokens. Per-user, not
+	// creator-gated.
+	r.HandleFunc("/api/indexes/{id}/audit", a.auditIndex).Methods("POST")
 
 	// Superuser console. Gated by MARKUPMARKDOWN_ADMIN_LOGINS (env
 	// allowlist of GitHub logins), cookie-session only — see admin.go.

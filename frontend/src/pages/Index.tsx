@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, APIError } from "../api";
 import type { IndexProgressEvent, MarkdownIndexItem, MarkdownIndexResponse } from "../types";
 import IndexPoliciesPanel from "../components/IndexPoliciesPanel";
+import IndexAuditPanel from "../components/IndexAuditPanel";
 import ErrorBlock from "../components/ErrorBlock";
 import { useToast, toastMessageFor } from "../components/Toast";
 import { useDialog } from "../components/Dialogs";
@@ -492,6 +493,9 @@ export default function IndexPage() {
       {isCreator && id && (
         <IndexPoliciesPanel indexId={id} items={items} />
       )}
+
+      {/* Agent audit — any signed-in user, their own tokens only. */}
+      {user && id && <IndexAuditPanel indexId={id} />}
 
       {/* Filename filter tabs. "All" is always present; the user can
           add up to 5 named filters that case-insensitively match the

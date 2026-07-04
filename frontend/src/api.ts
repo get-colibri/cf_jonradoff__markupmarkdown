@@ -599,6 +599,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ rules }),
     }),
+  /** Summon one of YOUR tokens to review every matching file. */
+  auditIndex: (indexId: string, tokenId: string, pattern?: string) =>
+    req<{ requested: number; pending: number; capped: boolean }>(
+      `/api/indexes/${indexId}/audit`,
+      { method: "POST", body: JSON.stringify({ tokenId, pattern }) }
+    ),
   applyIndexPolicyRules: (indexId: string) =>
     req<{
       linked: string[];
