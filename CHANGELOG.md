@@ -8,6 +8,19 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Failing checks gate the push.** Third push gate alongside
+  changes-requested reviews and unaccepted agent revisions: pushback
+  returns 409 `checks_failing` when the revision fails its doc
+  checks, with the count advised up-front in the modal and the same
+  force-override escape hatch. Checks inform; force decides.
+
+## [0.6.0] — 2026-07-04
+
+The governance release: doc checks grew into a policy system, reviews
+became self-fulfilling, and the admin console learned who's doing what.
+
+### Added
+
 - **Index-level policy application.** On any index you created, a
   "Check policies" panel maps filename patterns to your named
   policies ("_PRD → PRD Standard"): live match preview with per-file

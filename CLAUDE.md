@@ -222,10 +222,11 @@ Beyond doc-access + scope, [comments.go](backend/internal/api/comments.go) `patc
 
 The doc page carries a per-user review state ([reviews.go](backend/internal/api/reviews.go)): `approved | changes_requested | commented`. Exactly one review per (doc, user) — replace semantics via a deterministic composite `_id` (`docID + ":" + userID`). Agents leave reviews the same way humans do; the coordination surface is the same regardless of actor kind.
 
-Two push gates fire from these primitives ([pushback.go](backend/internal/api/pushback.go), `/api/documents/:id/pushback`):
+Three push gates fire from these primitives ([pushback.go](backend/internal/api/pushback.go), `/api/documents/:id/pushback`):
 
 - If **any** reviewer has `state=changes_requested`, pushback returns 409 `kind=changes_requested` unless the request body sets `force: true`.
 - If the current revision was written by an agent (`revision_meta.actor_kind == "agent"`) AND hasn't been accepted (`accepted_at == nil`), pushback returns 409 `kind=agent_revision_not_accepted` unless `force: true`.
+- If the revision fails its doc checks (see rule #23), pushback returns 409 `kind=checks_failing` unless `force: true`. Check-lookup errors count as zero failures — infrastructure problems must never brick a push.
 
 `GET /api/documents/:id/pushback/info` surfaces both gates as booleans so the modal can render Accept + a force checkbox up-front instead of surprising the user on submit.
 
@@ -268,6 +269,18 @@ A `ReviewRequest` targets a human (`reviewer_user_id`) XOR an agent token (`revi
 ### 22. Auto-review runs in-process, claims atomically, and never loops
 
 Auto-review tokens ([autoreview.go](backend/internal/api/autoreview.go)) are fulfilled by a single worker goroutine: fast path = enqueue channel at request-mint, crash recovery = 10-minute sweep. The order of guards in `processAutoReview` is load-bearing: cheap state checks → key check (leaves the request unclaimed so an external agent could still take it) → rate limit (unclaimed, sweep retries) → `ClaimAutoReviewAttempt` (atomic, one attempt per request per 24h) → Claude → apply. A Claude failure AFTER the claim deliberately burns the attempt — never retry a failing doc in a loop on someone else's API bill. All writes go through `AddSuggestion` / `SetReviewState` with the token identity so badges, gates, and implicit fulfillment behave exactly as if an external agent did it.
+
+### 23. Checks and policies: ownership is the security model
+
+The checks system ([checks.go](backend/internal/api/checks.go), [index_policies.go](backend/internal/api/index_policies.go)) has five invariants:
+
+1. **Templates are owner-scoped on every mutating path.** List/get/update/delete all filter `owner_id` in the query; linking a doc to a template requires the template be the CALLER's. There are no shared or global policies — mumd is a free-for-all on docs, not on policy libraries.
+2. **Evaluation is deliberately unscoped** (`GetCheckTemplateAny`): any viewer of a linked doc sees its check results — that's the feature. Rule contents leak through results by design; nothing else does.
+3. **Existing checks always win.** Index-level apply and the first-open auto-link NEVER overwrite a chain that already has a policy (linked or forked). A human's explicit choice beats pattern matching, always.
+4. **Index policy rules are creator-gated** (404 to everyone else) and may only reference templates the index creator owns — re-verified at auto-apply time so a stale rule can't smuggle another user's policy onto new docs.
+5. **Deleting a template materializes first.** `MaterializeTemplateIntoPolicies` copies rules inline into every linked chain (per-row UpdateOne) before the delete — no doc silently loses its checks.
+
+Results are computed on demand, never stored — don't add a results cache without also adding invalidation on template edit, policy change, AND revision creation.
 
 ## Operational notes
 

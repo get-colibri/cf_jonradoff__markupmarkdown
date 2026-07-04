@@ -42,6 +42,7 @@ type pushbackInfoResponse struct {
 	// have the request itself 409 on first submit.
 	ChangesRequested bool `json:"changesRequested,omitempty"`
 	AgentProposed    bool `json:"agentProposed,omitempty"`
+	ChecksFailing    int  `json:"checksFailing,omitempty"`
 }
 
 // pushbackInfo handles GET /api/documents/:id/pushback/info. Lets the
@@ -99,6 +100,7 @@ func (a *API) pushbackInfo(w http.ResponseWriter, r *http.Request) {
 		RepoHTMLURL:      info.HTMLURL,
 		ChangesRequested: changesRequested,
 		AgentProposed:    agentProposed,
+		ChecksFailing:    a.failingCheckCount(r, doc),
 	})
 }
 
@@ -192,6 +194,15 @@ func (a *API) pushback(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, fetchErrorResponse{
 				Error: "At least one reviewer has requested changes on this revision. Address the review (or dismiss it), or push with 'force' to override.",
 				Kind:  "changes_requested",
+			})
+			return
+		}
+		// Third gate: failing doc checks. Same override semantics as
+		// the review gates — checks inform, force decides.
+		if n := a.failingCheckCount(r, doc); n > 0 {
+			writeJSON(w, http.StatusConflict, fetchErrorResponse{
+				Error: fmt.Sprintf("%d check(s) are failing on this revision. Fix them, or push with 'force' to override.", n),
+				Kind:  "checks_failing",
 			})
 			return
 		}
@@ -444,4 +455,22 @@ func (a *API) writePushbackError(w http.ResponseWriter, r *http.Request, err err
 	// silence unused-r in case of future logging refactor
 	_ = r
 	_ = time.Now()
+}
+
+// failingCheckCount evaluates the chain's check policy against this
+// doc and counts failures. 0 when no policy exists or on any error —
+// a lookup failure must never brick a push (the gate is advisory
+// infrastructure; force always remains available).
+func (a *API) failingCheckCount(r *http.Request, doc *models.Document) int {
+	rules, _, err := a.resolvedCheckRules(r, doc)
+	if err != nil || len(rules) == 0 {
+		return 0
+	}
+	n := 0
+	for _, res := range evaluateChecks(rules, doc.Content) {
+		if !res.Pass {
+			n++
+		}
+	}
+	return n
 }

@@ -77,6 +77,10 @@ Tokens can be scoped per-agent and revoked any time. Never embed the token in a 
 | `merge_from_github` | Reconcile this doc with its upstream GitHub source via the 3-way Claude merge (ancestor = source content the revision was based on, ours = current doc, theirs = new upstream). Persists the merged content in place and re-anchors comments. Trivial cases (no AI revision, or upstream == ours) bypass Claude. Use when `get_document`'s drift indicators say upstream has changed. |
 | `push_to_github` | Opens a pull request from this doc's current content back to its source repo. PR mode only over MCP — direct-commit is intentionally web-UI-only for safety. Only push when a human has explicitly asked. **Blocked** by unaccepted agent revisions (see below) and by any `changes_requested` review — pass `force: true` only when the human has explicitly overridden. |
 
+### Doc checks
+
+Docs may carry deterministic lint rules (required sections, banned phrases, term spelling, …) set by humans, often via a named policy shared across many docs. Check results render for humans as a pass/fail verdict; there is no MCP surface for editing them. What it means for you: when your `edit_document` / `revise_with_ai` output violates a doc's checks (e.g. reintroduces a banned placeholder like "TBD"), a human will see a red ✗ — write clean, structured markdown and preserve required sections.
+
 ### Agent-proposed revisions
 
 Any revision written under an agent token (via `edit_document`, `revise_with_ai accept=true`, `merge_from_github`, or `apply_suggestion`) lands as **proposed**, not accepted. The pushback flow refuses to ship an unaccepted agent revision to GitHub until a **human** accepts it via `POST /api/documents/:id/accept-revision` (cookie session only — agents cannot self-accept, by design). This is the GitBook change-request pattern applied to the markupmarkdown chain: agent edits are real and live in the revision chain immediately, but the trip to the real repo is gated on a human review. Design principle: agents are first-class reviewers, not autonomous committers.

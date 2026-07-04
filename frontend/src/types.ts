@@ -392,6 +392,8 @@ export interface PushbackInfo {
    * The modal renders "Accept this revision first" with an Accept
    * button; sending force=true overrides. */
   agentProposed?: boolean;
+  /** Count of failing doc checks — the third push gate. */
+  checksFailing?: number;
 }
 
 /** A shareable listing of `.md` files anchored to a github resource.

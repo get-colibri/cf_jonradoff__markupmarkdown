@@ -36,9 +36,10 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
   // loaded (the 409 race) — same banner either way.
   const [changesRequested, setChangesRequested] = useState(false);
   const [agentProposed, setAgentProposed] = useState(false);
+  const [checksFailing, setChecksFailing] = useState(0);
   const [force, setForce] = useState(false);
   const [accepting, setAccepting] = useState(false);
-  const gated = changesRequested || agentProposed;
+  const gated = changesRequested || agentProposed || checksFailing > 0;
 
   const toast = useToast();
 
@@ -56,6 +57,7 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
         setTargetBranch(data.defaultBranch);
         setChangesRequested(Boolean(data.changesRequested));
         setAgentProposed(Boolean(data.agentProposed));
+        setChecksFailing(data.checksFailing ?? 0);
         // Default mode honors permissions: if direct isn't allowed,
         // force PR.
         if (!data.canPushDirect) setMode("pr");
@@ -132,6 +134,9 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
         err.kind === "agent_revision_not_accepted"
       ) {
         setAgentProposed(true);
+        setForce(false);
+      } else if (err instanceof APIError && err.kind === "checks_failing") {
+        setChecksFailing(1);
         setForce(false);
       } else {
         setError(
@@ -210,6 +215,18 @@ export default function PushbackModal({ doc, onClose, onPushed }: Props) {
                     A reviewer has requested changes on this document.
                     Address their feedback (or override below) before
                     pushing.
+                  </span>
+                </div>
+              )}
+              {checksFailing > 0 && (
+                <div className="rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs">
+                  <span className="font-medium">
+                    {checksFailing} check{checksFailing === 1 ? "" : "s"} failing.
+                  </span>{" "}
+                  <span className="text-muted">
+                    This revision doesn't pass its doc checks — see the
+                    Checks button on the doc for details, fix them, or
+                    override below.
                   </span>
                 </div>
               )}

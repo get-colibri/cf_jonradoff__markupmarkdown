@@ -144,3 +144,38 @@ func TestAcceptAgentRevision_RejectsTokenAuth(t *testing.T) {
 	}
 }
 
+
+func TestPushback_BlockedByFailingChecks(t *testing.T) {
+	restore := ghMock(t, mockGitHubForPushback())
+	defer restore()
+	srv, st, _ := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	doc := insertPushbackTestDoc(t, st, user.ID, "owner", "repo")
+
+	// A check the doc fails (its content lacks a Security heading).
+	doJSON(t, srv, "PUT", "/api/documents/"+doc.ID+"/check-policy",
+		map[string]any{"rules": []map[string]any{
+			{"kind": "required_sections", "label": "Sections", "sections": []string{"Security"}},
+		}}, withCookie(sess))
+
+	// Blocked with the checks_failing kind.
+	status, body := doJSON(t, srv, "POST", "/api/documents/"+doc.ID+"/pushback",
+		map[string]string{"mode": "pr", "branch": "agent/edit", "targetBranch": "main"},
+		withCookie(sess))
+	if status != 409 || !strings.Contains(string(body), "checks_failing") {
+		t.Fatalf("status=%d body=%s want 409 checks_failing", status, body)
+	}
+	// Info advises the count up-front.
+	_, info := doJSON(t, srv, "GET", "/api/documents/"+doc.ID+"/pushback/info", nil, withCookie(sess))
+	if !strings.Contains(string(info), `"checksFailing":1`) {
+		t.Errorf("info missing checksFailing: %s", info)
+	}
+	// Force overrides.
+	status, body = doJSON(t, srv, "POST", "/api/documents/"+doc.ID+"/pushback",
+		map[string]any{"mode": "pr", "branch": "agent/edit", "targetBranch": "main", "force": true},
+		withCookie(sess))
+	if status != 200 {
+		t.Errorf("force push status=%d body=%s want 200", status, body)
+	}
+}
