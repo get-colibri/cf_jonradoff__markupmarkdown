@@ -8,6 +8,16 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Doc checks — CI-style lint rules per doc chain.** Define rules
+  once (a "Checks" button next to Request review): required sections,
+  forbidden text (regex — e.g. ban a lowercase brand name), required
+  text, max heading depth. Every revision renders pass/fail chips
+  next to the review states, with failure details on hover. Rules
+  anchor to the chain root and follow the doc through revisions;
+  results are computed on demand so they can never go stale. Advisory
+  for now — failing checks inform reviewers rather than gating the
+  push.
+
 - **Auto-review tokens — server-fulfilled reviews.** Flag a token as
   *auto-review* and the backend itself answers review requests
   targeting it: Claude reads the doc (plus open discussion, so it

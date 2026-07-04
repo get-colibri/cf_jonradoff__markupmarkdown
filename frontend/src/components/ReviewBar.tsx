@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { api, APIError } from "../api";
 import { useAuth } from "../auth";
 import { useToast } from "./Toast";
+import CheckPolicyModal from "./CheckPolicyModal";
 import type {
   APIToken,
+  DocChecksResponse,
   MdDocument,
   MentionCandidate,
   Review,
@@ -38,19 +40,23 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [pending, setPending] = useState<ReviewRequest[]>([]);
   const [subs, setSubs] = useState<ReviewSubscription[]>([]);
+  const [checks, setChecks] = useState<DocChecksResponse | null>(null);
+  const [showChecksEditor, setShowChecksEditor] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [rv, rq, sb] = await Promise.all([
+        const [rv, rq, sb, ck] = await Promise.all([
           api.listReviews(doc.id),
           api.listDocReviewRequests(doc.id).catch(() => [] as ReviewRequest[]),
           api.listReviewSubscriptions(doc.id).catch(
             () => [] as ReviewSubscription[]
           ),
+          api.getDocChecks(doc.id).catch(() => null),
         ]);
         if (cancelled) return;
+        setChecks(ck);
         // Defensive ?? [] — a JSON null from any endpoint must never
         // reach .map/.length (blank-page crash, seen live 2026-07-03).
         setReviews(rv ?? []);
@@ -123,6 +129,7 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
   ];
 
   const hasChips = reviews.length > 0 || pending.length > 0 || subs.length > 0;
+  const checkResults = checks?.hasPolicy ? checks.results : [];
 
   return (
     <div className="mb-4 space-y-2">
@@ -155,6 +162,13 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
             </button>
           );
         })}
+        <button
+          onClick={() => setShowChecksEditor(true)}
+          className="px-2 py-1 rounded border border-rule text-muted hover:text-ink hover:border-ink transition"
+          title="Lint rules for this doc chain — results render as pass/fail chips"
+        >
+          Checks
+        </button>
         <RequestReviewMenu
           doc={doc}
           pending={pending}
@@ -168,6 +182,28 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
           }
         />
       </div>
+
+      {/* CI-style check chips: deterministic lint results for this
+          revision. Green = pass; red carries the failure detail in
+          its tooltip. */}
+      {checkResults.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          {checkResults.map((c) => (
+            <span
+              key={c.ruleId}
+              title={c.detail || (c.pass ? "Passing" : undefined)}
+              className={
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border " +
+                (c.pass
+                  ? "border-success/40 text-success"
+                  : "border-danger/40 text-danger cursor-help")
+              }
+            >
+              {c.pass ? "✓" : "✗"} {c.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Who-said-what chips. Named, never counted — this line is the
           answer to "what does the review status actually mean?" */}
@@ -224,6 +260,15 @@ export default function ReviewBar({ doc, onDocRefresh, onError }: Props) {
             </span>
           ))}
         </div>
+      )}
+      {showChecksEditor && (
+        <CheckPolicyModal
+          documentId={doc.id}
+          onClose={() => setShowChecksEditor(false)}
+          onSaved={() => {
+            api.getDocChecks(doc.id).then(setChecks).catch(() => {});
+          }}
+        />
       )}
     </div>
   );

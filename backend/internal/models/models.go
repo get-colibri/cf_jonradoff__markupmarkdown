@@ -284,7 +284,48 @@ type ReviewSubscription struct {
 	CreatedAt   time.Time `bson:"created_at" json:"createdAt"`
 }
 
-// ReviewRequestState is the lifecycle of a review request.
+// CheckRule is one deterministic lint rule in a doc's check policy.
+// Kinds:
+//   - required_sections: every string in Sections must appear as a
+//     markdown heading (any level, case-insensitive).
+//   - forbidden_text: Pattern (Go regex) must NOT match anywhere.
+//   - required_text: Pattern (Go regex) MUST match somewhere.
+//   - max_heading_depth: no heading deeper than MaxDepth.
+type CheckRule struct {
+	ID    string `bson:"id" json:"id"`
+	Kind  string `bson:"kind" json:"kind"`
+	Label string `bson:"label" json:"label"`
+
+	Sections []string `bson:"sections,omitempty" json:"sections,omitempty"`
+	Pattern  string   `bson:"pattern,omitempty" json:"pattern,omitempty"`
+	MaxDepth int      `bson:"max_depth,omitempty" json:"maxDepth,omitempty"`
+}
+
+// CheckPolicy is the set of lint rules for a revision CHAIN (anchored
+// to the root, same as review subscriptions — the policy follows the
+// doc through revisions). Results are computed on demand, never
+// stored: deterministic rules over content are cheap and can't go
+// stale.
+type CheckPolicy struct {
+	ID             string      `bson:"_id" json:"id"` // == root document id
+	RootDocumentID string      `bson:"root_document_id" json:"rootDocumentId"`
+	Rules          []CheckRule `bson:"rules" json:"rules"`
+	UpdatedByID    string      `bson:"updated_by_id" json:"-"`
+	UpdatedAt      time.Time   `bson:"updated_at" json:"updatedAt"`
+}
+
+// CheckResult is one rule's outcome against one doc's content.
+type CheckResult struct {
+	RuleID string `json:"ruleId"`
+	Label  string `json:"label"`
+	Kind   string `json:"kind"`
+	Pass   bool   `json:"pass"`
+	// Detail explains a failure ("missing section: Rollback plan") or
+	// a rule-config problem ("invalid pattern: ..."). Empty on pass.
+	Detail string `json:"detail,omitempty"`
+}
+
+// ReviewRequestState is the lifecycle of a review request.// ReviewRequestState is the lifecycle of a review request.
 type ReviewRequestState string
 
 const (

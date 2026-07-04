@@ -19,6 +19,9 @@ import type {
   AdminOverview,
   AdminRecentDoc,
   AdminUserRow,
+  CheckPolicy,
+  CheckRule,
+  DocChecksResponse,
   Review,
   ReviewRequest,
   ReviewState,
@@ -553,6 +556,18 @@ export const api = {
    * stop anyone from re-requesting a review that's already out. */
   listDocReviewRequests: (documentId: string) =>
     req<ReviewRequest[]>(`/api/documents/${documentId}/review-requests`),
+  /** Deterministic lint checks for this doc (computed on demand). */
+  getDocChecks: (documentId: string) =>
+    req<DocChecksResponse>(`/api/documents/${documentId}/checks`),
+  getCheckPolicy: (documentId: string) =>
+    req<CheckPolicy>(`/api/documents/${documentId}/check-policy`),
+  /** Replace the chain's rule set; empty rules deletes the policy. */
+  putCheckPolicy: (documentId: string, rules: CheckRule[]) =>
+    req<CheckPolicy>(`/api/documents/${documentId}/check-policy`, {
+      method: "PUT",
+      body: JSON.stringify({ rules }),
+    }),
+
   /** Standing reviewers on this doc's chain (Phase 2b). */
   listReviewSubscriptions: (documentId: string) =>
     req<ReviewSubscription[]>(`/api/documents/${documentId}/reviewers`),

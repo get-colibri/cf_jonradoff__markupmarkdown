@@ -107,6 +107,36 @@ export interface AdminRecentDoc {
   updatedAt: string;
 }
 
+/** One deterministic lint rule in a doc chain's check policy. */
+export interface CheckRule {
+  id?: string;
+  kind: "required_sections" | "forbidden_text" | "required_text" | "max_heading_depth";
+  label: string;
+  sections?: string[];
+  pattern?: string;
+  maxDepth?: number;
+}
+
+export interface CheckResult {
+  ruleId: string;
+  label: string;
+  kind: CheckRule["kind"];
+  pass: boolean;
+  detail?: string;
+}
+
+export interface DocChecksResponse {
+  hasPolicy: boolean;
+  results: CheckResult[];
+}
+
+export interface CheckPolicy {
+  id?: string;
+  rootDocumentId?: string;
+  rules: CheckRule[];
+  updatedAt?: string;
+}
+
 export interface NotificationItem {
   id: string;
   kind: "mention" | "reply" | "review_request" | "review_state";

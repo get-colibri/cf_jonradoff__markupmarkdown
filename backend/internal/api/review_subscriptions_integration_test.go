@@ -161,3 +161,54 @@ func TestDeleteReviewSubscription_Authz(t *testing.T) {
 		t.Errorf("creator delete status=%d want 204", status)
 	}
 }
+
+func TestCheckPolicy_RoundTripAndChainScope(t *testing.T) {
+	srv, st, a := newTestServer(t)
+	user := testutil.NewTestUser(t, st)
+	sess := testutil.NewTestSession(t, st, user.ID)
+	doc := testutil.NewTestDocument(t, st, user.ID,
+		"# Overview\n\nAll data is beamable-ready.\n")
+
+	// Set a policy on the root.
+	status, body := doJSON(t, srv, "PUT", "/api/documents/"+doc.ID+"/check-policy",
+		map[string]any{"rules": []map[string]any{
+			{"kind": "required_sections", "label": "Sections", "sections": []string{"Overview", "Security"}},
+			{"kind": "forbidden_text", "label": "Terminology", "pattern": `\bbeamable\b`},
+		}}, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("put policy status=%d body=%s", status, body)
+	}
+
+	// Checks on the root: Sections fails (no Security), Terminology fails.
+	status, body = doJSON(t, srv, "GET", "/api/documents/"+doc.ID+"/checks", nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("checks status=%d body=%s", status, body)
+	}
+	if !strings.Contains(string(body), `"hasPolicy":true`) ||
+		!strings.Contains(string(body), "missing: Security") {
+		t.Errorf("unexpected checks payload: %s", body)
+	}
+
+	// A child revision that fixes both must pass — and the POLICY must
+	// follow the chain without being re-created.
+	child, err := a.EditDocument(context.Background(), user.ID, doc.ID,
+		"# Overview\n\n# Security\n\nAll data is Beamable-ready.\n", "", "")
+	if err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	status, body = doJSON(t, srv, "GET", "/api/documents/"+child.ID+"/checks", nil, withCookie(sess))
+	if status != 200 {
+		t.Fatalf("child checks status=%d", status)
+	}
+	if strings.Contains(string(body), `"pass":false`) {
+		t.Errorf("child should pass all checks: %s", body)
+	}
+
+	// Empty rules deletes the policy.
+	doJSON(t, srv, "PUT", "/api/documents/"+doc.ID+"/check-policy",
+		map[string]any{"rules": []map[string]any{}}, withCookie(sess))
+	status, body = doJSON(t, srv, "GET", "/api/documents/"+doc.ID+"/checks", nil, withCookie(sess))
+	if status != 200 || !strings.Contains(string(body), `"hasPolicy":false`) {
+		t.Errorf("policy not deleted: %s", body)
+	}
+}

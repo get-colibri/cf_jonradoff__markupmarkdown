@@ -73,6 +73,7 @@ func (s *Store) ReviewRequests() *mongo.Collection { return s.db.Collection("rev
 func (s *Store) ReviewSubscriptions() *mongo.Collection {
 	return s.db.Collection("review_subscriptions")
 }
+func (s *Store) CheckPolicies() *mongo.Collection { return s.db.Collection("check_policies") }
 
 func (s *Store) ensureIndexes(ctx context.Context) {
 	_, _ = s.Documents().Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -424,6 +425,44 @@ func (s *Store) ClaimAutoReviewAttempt(ctx context.Context, id string) (bool, er
 		return false, err
 	}
 	return res.ModifiedCount > 0, nil
+}
+
+// UpsertCheckPolicy replaces the rule set for a chain root.
+func (s *Store) UpsertCheckPolicy(ctx context.Context, p *models.CheckPolicy) error {
+	if p.RootDocumentID == "" {
+		return fmt.Errorf("upsert check policy: missing root_document_id")
+	}
+	p.ID = p.RootDocumentID
+	p.UpdatedAt = time.Now().UTC()
+	_, err := s.CheckPolicies().UpdateOne(ctx,
+		bson.M{"_id": p.ID},
+		bson.M{"$set": bson.M{
+			"root_document_id": p.RootDocumentID,
+			"rules":            p.Rules,
+			"updated_by_id":    p.UpdatedByID,
+			"updated_at":       p.UpdatedAt,
+		}},
+		options.UpdateOne().SetUpsert(true))
+	return err
+}
+
+// GetCheckPolicy returns the chain's policy, or nil when none is set.
+func (s *Store) GetCheckPolicy(ctx context.Context, rootDocID string) (*models.CheckPolicy, error) {
+	var p models.CheckPolicy
+	err := s.CheckPolicies().FindOne(ctx, bson.M{"_id": rootDocID}).Decode(&p)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// DeleteCheckPolicy removes the chain's policy entirely.
+func (s *Store) DeleteCheckPolicy(ctx context.Context, rootDocID string) error {
+	_, err := s.CheckPolicies().DeleteOne(ctx, bson.M{"_id": rootDocID})
+	return err
 }
 
 // ReviewSubscriptionID is the deterministic composite _id for a
