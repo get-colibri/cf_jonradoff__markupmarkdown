@@ -178,7 +178,7 @@ func (a *API) processAutoReview(requestID string) {
 		// summoned review never just silently evaporates.
 		_ = a.store.MarkAutoReviewFailed(ctx, requestID, shortAIError(err))
 		a.notifyAutoReview(ctx, rr, owner.ID, token.Label,
-			"auto-review failed: "+shortAIError(err))
+			"auto-review failed: "+shortAIError(err), "")
 		return
 	}
 
@@ -186,6 +186,7 @@ func (a *API) processAutoReview(requestID string) {
 	// suggestion whose quote isn't verbatim in the doc fails validation
 	// and is dropped — the model was warned.
 	applied := 0
+	firstCommentID := ""
 	for _, s := range result.Suggestions {
 		if applied >= 5 {
 			break
@@ -194,8 +195,12 @@ func (a *API) processAutoReview(requestID string) {
 		if body == "" {
 			body = "Suggested change."
 		}
-		if _, err := a.AddSuggestion(ctx, owner.ID, doc.ID, body, s.Quoted, 1, s.Replacement, token.ID, token.Label); err != nil {
+		c, err := a.AddSuggestion(ctx, owner.ID, doc.ID, body, s.Quoted, 1, s.Replacement, token.ID, token.Label)
+		if err != nil {
 			continue
+		}
+		if firstCommentID == "" {
+			firstCommentID = c.ID
 		}
 		applied++
 	}
@@ -227,12 +232,13 @@ func (a *API) processAutoReview(requestID string) {
 	} else if result.State == "approved" {
 		summary += " · no issues found"
 	}
-	a.notifyAutoReview(ctx, rr, owner.ID, token.Label, summary)
+	a.notifyAutoReview(ctx, rr, owner.ID, token.Label, summary, firstCommentID)
 }
 
 // notifyAutoReview inserts the summoner's bell notification for a
-// finished (or failed) auto-run.
-func (a *API) notifyAutoReview(ctx context.Context, rr *models.ReviewRequest, requesterID, tokenLabel, preview string) {
+// finished (or failed) auto-run. commentID (optional) deep-links the
+// bell click straight to the first suggestion instead of the bare doc.
+func (a *API) notifyAutoReview(ctx context.Context, rr *models.ReviewRequest, requesterID, tokenLabel, preview, commentID string) {
 	n := &models.Notification{
 		ID:            newUUID(),
 		UserID:        requesterID,
@@ -240,6 +246,7 @@ func (a *API) notifyAutoReview(ctx context.Context, rr *models.ReviewRequest, re
 		DocumentID:    rr.DocumentID,
 		DocumentTitle: rr.DocumentTitle,
 		ActorName:     tokenLabel,
+		CommentID:     commentID,
 		Preview:       preview,
 		CreatedAt:     timeNowUTC(),
 	}

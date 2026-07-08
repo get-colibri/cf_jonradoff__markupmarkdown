@@ -8,6 +8,23 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [1.0.1] — 2026-07-08
+
+### Fixed
+
+- **Suggestion Apply button was permanently disabled.** The anchored
+  comment-card list — the only place suggestions can appear — never
+  received the `onApplySuggestion` handler; it was wired to the
+  doc-level list instead, where suggestions can't exist (no anchor).
+  Apply now works on anchored suggestion cards.
+
+### Changed
+
+- **Auto-review notifications deep-link to the first suggestion.**
+  Clicking the bell entry for a finished auto-review that produced
+  suggestions now lands directly on the first suggestion comment
+  (via the existing `?comment=ID` deep link) instead of the bare doc.
+
 ## [1.0.0] — 2026-07-04
 
 **markupmarkdown 1.0.** What started as Google-Docs-style commenting

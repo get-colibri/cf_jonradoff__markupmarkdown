@@ -1606,11 +1606,6 @@ export default function DocumentPage() {
                   onDelete={() => handleDelete(c)}
                   onEditReply={(rid, body) => handleEditReply(c, rid, body)}
                   onDeleteReply={(rid) => handleDeleteReply(c, rid)}
-                  onApplySuggestion={
-                    c.suggestion && !c.suggestion.appliedAt
-                      ? () => handleApplySuggestion(c)
-                      : undefined
-                  }
                 />
               ))}
             </div>
@@ -1705,6 +1700,11 @@ export default function DocumentPage() {
                     onDelete={() => handleDelete(c)}
                     onEditReply={(rid, body) => handleEditReply(c, rid, body)}
                     onDeleteReply={(rid) => handleDeleteReply(c, rid)}
+                    onApplySuggestion={
+                      c.suggestion && !c.suggestion.appliedAt
+                        ? () => handleApplySuggestion(c)
+                        : undefined
+                    }
                   />
                   <CommentStepNav
                     position={idx + 1}
