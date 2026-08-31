@@ -1,19 +1,18 @@
 # markupmarkdown
 
-[![CI](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml/badge.svg)](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/jonradoff/markupmarkdown/branch/master/graph/badge.svg)](https://codecov.io/gh/jonradoff/markupmarkdown)
-[![version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
+[⁠![CI](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml/badge.svg)](https://github.com/jonradoff/markupmarkdown/actions/workflows/ci.yml)
+[⁠![codecov](https://codecov.io/gh/jonradoff/markupmarkdown/branch/master/graph/badge.svg)](https://codecov.io/gh/jonradoff/markupmarkdown)
+[⁠![version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 
-**Google Docs for markdown — comment on, edit, and ship `.md` files like it's a real document.** Paste a URL, drag-select text, leave a margin comment. Your teammates see it in real time. Edit the raw markdown in a native CodeMirror editor with a formatting toolbar, find-and-replace, and live preview. Resolve threads, then hand them to Claude for an AI-revised version — or push your edits straight back to GitHub as a pull request or direct commit. Agents join the same review through an MCP server: they read what humans read, leave threads humans approve, and (with explicit human sign-off) apply the resolved feedback as a new revision.
+**Google Docs for markdown — comment on, edit, and ship **`.md`** files like it's a real document.** Paste a URL, drag-select text, leave a margin comment. Your teammates see it in real time. Edit the raw markdown in a native CodeMirror editor with a formatting toolbar, find-and-replace, and live **preview**. Resolve threads, then hand them to Claude for an AI-revised version — or push your edits straight back to GitHub as a pull request or direct commit. Agents join the same review through an MCP server: they read what humans read, leave threads humans approve, and (with explicit human sign-off) apply the resolved feedback as a new revision.
 
 Unlike Google Docs, edits happen on the actual markdown — so the file in your repo stays the source of truth and the round-trip back to GitHub is one click.
 
-Live: **<https://mumd.metavert.io/>**
+Live: **[https://mumd.metavert.io](https://mumd.metavert.io)****</https:>**
 
 ---
 
-## The problem
-
+The problem
 Markdown is where a lot of real thinking lives now — PRDs, design docs, RFCs, release notes, prompts, briefs. But the tools for *reviewing* it are miserable:
 
 - **GitHub PRs** force every discussion through a code-review workflow. Fine for production code, painful for a quick "this paragraph is unclear" on a brainstorming doc you haven't even branched yet.
@@ -63,11 +62,11 @@ Everything you'd expect from a Google-Docs-style review experience, in a codebas
 
 ### Markdown indexes — organize a team's docs across all your repos
 
-Indexes are **shareable listings of `.md` files** anchored to a GitHub resource. The point: a team has dozens of markdown docs scattered across repos (`PRD.md`, `RFC-*.md`, `README.md`, `CLAUDE.md`, …), and there's no good way to *navigate* them as a collection. Paste one URL and you get a curated index your whole team can browse and bookmark.
+Indexes are **shareable listings of **`.md`** files** anchored to a GitHub resource. The point: a team has dozens of markdown docs scattered across repos (`PRD.md`, `RFC-*.md`, `README.md`, `CLAUDE.md`, …), and there's no good way to *navigate* them as a collection. Paste one URL and you get a curated index your whole team can browse and bookmark.
 
 - **Three URL shapes** recognized at the home-page URL bar:
-  - `github.com/owner/repo` → repo index, listing every `.md` file in the repo's git tree (one round-trip via `/git/trees?recursive=1`).
-  - `github.com/owner` → user *or* org index (auto-detected via `/users/{name}.type`), listing each repo's top-level `.md` files grouped by repo.
+   - `github.com/owner/repo` → repo index, listing every `.md` file in the repo's git tree (one round-trip via `/git/trees?recursive=1`).
+   - `github.com/owner` → user *or* org index (auto-detected via `/users/{name}.type`), listing each repo's top-level `.md` files grouped by repo.
 - **Shareable, viewer-scoped access.** Each index lives at its own permalink and rewrites to a human URL (`mumd.metavert.io/anthropics`). Items are computed live on every view using the viewer's GitHub token — different viewers see different listings if their repo access differs. Private-repo indexes re-verify access on every read (same model as private docs); private items in user/org listings are filtered to the original scanner's audience so cached file names don't leak to non-members.
 - **Live progress.** Org spiders show a real-time activity log (last 8 repos with file counts), progress bar, and X/Y counter. The per-repo fetches fan out across a worker pool of 8 — `github.com/beamable` (~150 repos) completes in under 10 s instead of 60+.
 - **Server-side caching + explicit Refresh.** The first scan persists; subsequent visits load instantly from cache. A circular-arrow Refresh button in the page header re-spiders on demand. No accidental re-burning of GitHub rate limits.
@@ -102,6 +101,7 @@ The home page surfaces *Your indexes* above *Your documents* so a saved index be
 
 This isn't a SaaS. The whole stack:
 
+
 ```
 fly machine (512 MB)
 └── markupmarkdown (Go binary)
@@ -115,6 +115,7 @@ fly machine (512 MB)
 No build-time JavaScript on the server. No background workers besides a daily purge sweep and a bounded view-recording queue. No webhooks. No analytics SDK. No cookie banner because the only cookie is a session ID. Bring your own Anthropic key — your usage, your bill, your data.
 
 ## Quick start
+
 
 ```sh
 git clone <this-repo>
@@ -130,9 +131,10 @@ cd frontend
 npm install && npm run dev
 ```
 
-Open <http://localhost:4720/>.
+Open [http://localhost:4720](http://localhost:4720)</http:>.
 
 ### Generate the encryption master key
+
 
 ```sh
 openssl rand -hex 32
@@ -142,14 +144,15 @@ Set it as `MARKUPMARKDOWN_ENCRYPTION_KEY` in `backend/.env` (for dev) and as a F
 
 ## Optional: GitHub OAuth
 
-Login + private repos are opt-in. Register an OAuth app at <https://github.com/settings/applications/new>:
+Login + private repos are opt-in. Register an OAuth app at [https://github.com/settings/applications/new](https://github.com/settings/applications/new):
 
-| Field | Value |
-|---|---|
-| Homepage URL | `http://localhost:4720` (dev) / your prod URL |
+| Field        | Value                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| Homepage URL | `http://localhost:4720` (dev) / your prod URL                                                       |
 | Callback URL | `http://localhost:4721/api/auth/github/callback` (dev) / `<your-prod-url>/api/auth/github/callback` |
 
 Add to env:
+
 
 ```
 GITHUB_CLIENT_ID=Iv1.xxxxxxxxxxxxxxxx
@@ -159,6 +162,7 @@ GITHUB_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 Scope `repo` enables reading private files; drop to `read:user user:email` if you only want public docs.
 
 ## Deploy to Fly.io
+
 
 ```sh
 fly launch              # or `fly apps create` if you already have a name
@@ -188,47 +192,48 @@ The agent passes the token as `Authorization: Bearer mmk_…` on REST and MCP ca
 
 ### MCP server
 
-Streamable HTTP transport at **`/mcp`**, built on [`github.com/mark3labs/mcp-go`](https://github.com/mark3labs/mcp-go). Authenticate every call with `Authorization: Bearer mmk_…`. Seventeen tools cover the same surface humans see in the web UI; every one routes through the same access checks, scope enforcement, validation, and rate-limit buckets as REST — there is no agent-only fast path.
+Streamable HTTP transport at `/mcp`, built on `github.com/mark3labs/mcp-go`. Authenticate every call with `Authorization: Bearer mmk_…`. Seventeen tools cover the same surface humans see in the web UI; every one routes through the same access checks, scope enforcement, validation, and rate-limit buckets as REST — there is no agent-only fast path.
 
 #### Reading (`read` scope)
 
-| Tool | Purpose |
-|---|---|
-| `list_documents` | Docs the calling identity has touched. Set `include_trash: true` to include soft-deleted docs. |
-| `get_document` | Full markdown content + metadata, including parent/`rootDocument`/`latestDescendant`, source drift state, and revision index. |
-| `list_comments` | Threads on a doc — filter by `open` / `resolved` / `all`, optionally pre-render bodies to HTML via `render_html: true`. |
+| Tool             | Purpose                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_documents` | Docs the calling identity has touched. Set `include_trash: true` to include soft-deleted docs.                                         |
+| `get_document`   | Full markdown content + metadata, including parent/`rootDocument`/`latestDescendant`, source drift state, and revision index.          |
+| `list_comments`  | Threads on a doc — filter by `open` / `resolved` / `all`, optionally pre-render bodies to HTML via `render_html: true`.                |
 | `list_revisions` | The full revision chain (root → leaf) for a doc with each node's `revisionIndex`, `model`, `generatedBy`, `actorKind`, and timestamps. |
 
 #### Commenting (`write` scope)
 
-| Tool | Purpose |
-|---|---|
-| `add_comment` | Anchor a new thread to a **verbatim substring** of the doc. Pass `occurrence: N` (1-based) when the substring appears multiple times. |
-| `add_suggestion` | Anchor a comment PLUS a structured "replace this with THIS" edit proposal. Reviewers see a one-click Apply button that creates a manual revision — empirically the highest-actionability review artifact. |
-| `reply` | Reply to an existing thread. |
-| `resolve_comment` / `reopen_comment` | Lifecycle. Resolved threads become eligible inputs for `revise_with_ai`. |
-| `patch_anchor` | Re-anchor an orphan comment, or convert any comment to a document-level pin (`doc_level: true`). Mine-only. |
-| `delete_comment` | Remove a thread your token authored. Mine-only — same require-mine guard as REST. |
-| `set_review_state` | Set your discrete review state on a doc: `approved`, `changes_requested`, or `commented`. Mirrors GitHub PR reviews. `changes_requested` blocks the pushback flow until dismissed or force-overridden. |
+| Tool                                 | Purpose                                                                                                                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_comment`                        | Anchor a new thread to a **verbatim substring** of the doc. Pass `occurrence: N` (1-based) when the substring appears multiple times.                                                                     |
+| `add_suggestion`                     | Anchor a comment PLUS a structured "replace this with THIS" edit proposal. Reviewers see a one-click Apply button that creates a manual revision — empirically the highest-actionability review artifact. |
+| `reply`                              | Reply to an existing thread.                                                                                                                                                                              |
+| `resolve_comment` / `reopen_comment` | Lifecycle. Resolved threads become eligible inputs for `revise_with_ai`.                                                                                                                                  |
+| `patch_anchor`                       | Re-anchor an orphan comment, or convert any comment to a document-level pin (`doc_level: true`). Mine-only.                                                                                               |
+| `delete_comment`                     | Remove a thread your token authored. Mine-only — same require-mine guard as REST.                                                                                                                         |
+| `set_review_state`                   | Set your discrete review state on a doc: `approved`, `changes_requested`, or `commented`. Mirrors GitHub PR reviews. `changes_requested` blocks the pushback flow until dismissed or force-overridden.    |
 
 #### Editing the document (`admin` scope)
 
-| Tool | Purpose |
-|---|---|
-| `edit_document` | Save a new manual revision by sending the full new content. Creates a new child doc; unresolved comments carry forward and are re-anchored against the new content. |
-| `revise_with_ai` | Run Claude Opus 4.7 over the doc + selected resolved threads. Preview-only by default (`accept: false`); pass `accept: true` to save as a new child doc. Uses the **human user's** stored Anthropic key. |
-| `merge_from_github` | Reconcile a doc with its upstream GitHub source via a 3-way Claude merge (ancestor = source the revision was based on, ours = current doc, theirs = new upstream). Persists the merged content and re-anchors comments. Trivial cases bypass Claude. |
-| `push_to_github` | Open a pull request from the doc's current content back to its source repo. PR mode only over MCP — direct-commit is web-UI-only for safety. Only push when a human has explicitly asked. **Blocked** by any `changes_requested` review and by unaccepted agent revisions — pass `force: true` only when the human has explicitly overridden. |
+| Tool                | Purpose                                                                                                                                                                                                                                                                                                                                       |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edit_document`     | Save a new manual revision by sending the full new content. Creates a new child doc; unresolved comments carry forward and are re-anchored against the new content.                                                                                                                                                                           |
+| `revise_with_ai`    | Run Claude Opus 4.7 over the doc + selected resolved threads. Preview-only by default (`accept: false`); pass `accept: true` to save as a new child doc. Uses the **human user's** stored Anthropic key.                                                                                                                                      |
+| `merge_from_github` | Reconcile a doc with its upstream GitHub source via a 3-way Claude merge (ancestor = source the revision was based on, ours = current doc, theirs = new upstream). Persists the merged content and re-anchors comments. Trivial cases bypass Claude.                                                                                          |
+| `push_to_github`    | Open a pull request from the doc's current content back to its source repo. PR mode only over MCP — direct-commit is web-UI-only for safety. Only push when a human has explicitly asked. **Blocked** by any `changes_requested` review and by unaccepted agent revisions — pass `force: true` only when the human has explicitly overridden. |
 
 Agent revisions land as **proposed**, not accepted. Any revision written under a Bearer token — via `edit_document`, `revise_with_ai accept=true`, `merge_from_github`, or `apply_suggestion` — sits in the chain immediately but the pushback flow refuses to ship it to GitHub until a human accepts via `POST /api/documents/:id/accept-revision` (cookie-only; agents cannot self-accept). This is the GitBook change-request pattern applied to markupmarkdown: agents are first-class reviewers, not autonomous committers.
 
-The full agent guide — conventions, identity model, rate limits, scope hierarchy, when-to-edit-vs-revise-vs-merge, and out-of-scope actions — lives at [`skills/markupmarkdown/SKILL.md`](skills/markupmarkdown/SKILL.md) and is served live at <https://mumd.metavert.io/SKILL.md>.
+The full agent guide — conventions, identity model, rate limits, scope hierarchy, when-to-edit-vs-revise-vs-merge, and out-of-scope actions — lives at `skills/markupmarkdown/SKILL.md` and is served live at [https://mumd.metavert.io/SKILL.md](https://mumd.metavert.io/SKILL.md).
 
 ### Examples
 
 All nine examples below are real MCP requests against the live `/mcp` endpoint. Each `"name"` matches the tool in the tables above; `arguments` is the literal payload.
 
 #### 1. Read a doc and its open threads
+
 
 ```jsonc
 // MCP request
@@ -252,6 +257,7 @@ All nine examples below are real MCP requests against the live `/mcp` endpoint. 
 
 #### 2. Leave a margin comment anchored to a specific phrase
 
+
 ```jsonc
 {
   "name": "add_comment",
@@ -267,6 +273,7 @@ If the quoted text appears multiple times in the doc, the tool returns an error 
 
 #### 3. Reply to a human's thread
 
+
 ```jsonc
 {
   "name": "reply",
@@ -278,6 +285,7 @@ If the quoted text appears multiple times in the doc, the tool returns an error 
 ```
 
 #### 3b. Suggest a specific concrete edit (one-click Apply for the reviewer)
+
 
 ```jsonc
 {
@@ -295,6 +303,7 @@ If the quoted text appears multiple times in the doc, the tool returns an error 
 
 #### 3c. Block a push until an issue is addressed
 
+
 ```jsonc
 {
   "name": "set_review_state",
@@ -309,6 +318,7 @@ If the quoted text appears multiple times in the doc, the tool returns an error 
 ```
 
 #### 4. Apply resolved comments as a new revision (with human approval)
+
 
 ```jsonc
 // Preview only — does NOT save:
@@ -337,6 +347,7 @@ The revision uses the **human user's** stored Anthropic key — the agent never 
 
 #### 5. Apply a targeted manual edit (no AI revision)
 
+
 ```jsonc
 // First read the current content so you can splice in your change:
 { "name": "get_document", "arguments": { "id": "a3f7c2..." } }
@@ -359,6 +370,7 @@ Use this when you've decided on a specific change yourself, rather than asking C
 
 #### 6. Walk the revision chain and find the leaf
 
+
 ```jsonc
 {
   "name": "list_revisions",
@@ -374,6 +386,7 @@ Use this when you've decided on a specific change yourself, rather than asking C
 `get_document`'s `latestDescendant` answers the same question with a single call. `list_revisions` is the right choice when you want the full chain (e.g. to show a version picker).
 
 #### 7. Pull in upstream GitHub edits, then push the resolved revision back as a PR
+
 
 ```jsonc
 // 1. The doc's source-drift indicators say upstream changed. Reconcile via 3-way merge:
@@ -413,10 +426,11 @@ Every MCP tool corresponds to a REST endpoint at `/api/...` — the same Bearer 
 3. **Use markdown formatting** in bodies — humans see it rendered, other agents can fetch HTML via `render_html: true`.
 4. **Mention humans explicitly** with `@github-login` when you want their attention.
 5. **Don't resolve your own threads** unless the human told you to.
-6. **Treat `revise_with_ai` as privileged** — prefer `accept: false` first, surface the diff, only then call `accept: true`.
+6. **Treat **`revise_with_ai`** as privileged** — prefer `accept: false` first, surface the diff, only then call `accept: true`.
 7. **Respect rate limits.** Token budgets are per-user; bursts > 30/min get `429`s.
 
 ## Full API surface
+
 
 ```
 # Documents + comments
@@ -514,12 +528,13 @@ GET    /SKILL.md                                canonical SKILL.md (raw markdown
 
 The review-coordination primitives above are grounded in a 2026 research pass on collaborative markdown editing + agentic AI in doc collaboration. Load-bearing citations:
 
-- **GitHub — [About pull request reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews)** — the three review states + suggested-changes UX. Also the source of the design insight that comments should anchor to source markdown rather than to diff hunks: GitHub's [four-year diff-anchor limitation](https://github.com/orgs/community/discussions/4452) on doc reviews is the friction markupmarkdown is structurally immune to.
-- **Brown & Parnin, ESEC/FSE '20 — [Understanding the Impact of GitHub Suggested Changes on Recommendations between Developers](https://chbrown13.github.io/papers/suggestions.pdf)** — peer-reviewed empirical grounding for the timing / location / actionability triad that `add_suggestion` targets.
-- **GitBook Agent — [write and edit with AI](https://gitbook.com/docs/gitbook-agent/write-and-edit-with-ai) + [Change requests](https://gitbook.com/docs/collaboration/change-requests)** — closest shipped prior art for "AI as persistent, addressable reviewer." The agent-proposed-revision + human-accept flow is the same shape.
-- **[Notion MCP](https://developers.notion.com/docs/mcp) + [Claude Artifacts](https://support.claude.com/en/articles/9487310-what-are-artifacts-and-how-do-i-use-them)** — studied and *deliberately not adopted*. Notion's OAuth-inheritance model would collapse the per-token agent audit trail; Claude Artifacts' inline-only, no-review-thread paradigm is exactly what markupmarkdown exists to complete.
+- **GitHub — ****[About pull request reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/about-pull-request-reviews)** — the three review states + suggested-changes UX. Also the source of the design insight that comments should anchor to source markdown rather than to diff hunks: GitHub's [four-year diff-anchor limitation](https://github.com/orgs/community/discussions/4452) on doc reviews is the friction markupmarkdown is structurally immune to.
+- **Brown & Parnin, ESEC/FSE '20 — ****[Understanding the Impact of GitHub Suggested Changes on Recommendations between Developers](https://chbrown13.github.io/papers/suggestions.pdf)** — peer-reviewed empirical grounding for the timing / location / actionability triad that `add_suggestion` targets.
+- **GitBook Agent — ****[write and edit with AI](https://gitbook.com/docs/gitbook-agent/write-and-edit-with-ai)**** + ****[Change requests](https://gitbook.com/docs/collaboration/change-requests)** — closest shipped prior art for "AI as persistent, addressable reviewer." The agent-proposed-revision + human-accept flow is the same shape.
+- **[Notion MCP](https://developers.notion.com/docs/mcp)**** + ****[Claude Artifacts](https://support.claude.com/en/articles/9487310-what-are-artifacts-and-how-do-i-use-them)** — studied and *deliberately not adopted*. Notion's OAuth-inheritance model would collapse the per-token agent audit trail; Claude Artifacts' inline-only, no-review-thread paradigm is exactly what markupmarkdown exists to complete.
 
 ## Build checks
+
 
 ```sh
 cd backend && go build ./...
@@ -543,6 +558,7 @@ The frontend has a separate suite: Vitest for unit tests on the utility
 modules, Playwright for end-to-end browser flows.
 
 ### Backend
+
 
 ```sh
 cd backend
@@ -570,6 +586,7 @@ To run integration tests locally, copy `backend/.env.test.example` to
 integration tests are skipped (not failed) so unit-only runs are fast.
 
 ### Frontend (Playwright)
+
 
 ```sh
 cd frontend
