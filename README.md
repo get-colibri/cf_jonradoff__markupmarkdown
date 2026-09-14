@@ -10,9 +10,8 @@ Unlike Google Docs, edits happen on the actual markdown — so the file in your 
 
 Live: **[https://mumd.metavert.io](https://mumd.metavert.io)****</https:>**
 
----
-
 The problem
+
 Markdown is where a lot of real thinking lives now — PRDs, design docs, RFCs, release notes, prompts, briefs. But the tools for *reviewing* it are miserable:
 
 - **GitHub PRs** force every discussion through a code-review workflow. Fine for production code, painful for a quick "this paragraph is unclear" on a brainstorming doc you haven't even branched yet.
