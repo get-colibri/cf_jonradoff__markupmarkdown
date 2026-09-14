@@ -6,7 +6,7 @@
 
 **Google Docs for markdown — comment on, edit, and ship **`.md`** files like it's a real document.** Paste a URL, drag-select text, leave a margin comment. Your teammates see it in real time. Edit the raw markdown in a native CodeMirror editor with a formatting toolbar, find-and-replace, and live **preview**. Resolve threads, then hand them to Claude for an AI-revised version — or push your edits straight back to GitHub as a pull request or direct commit. Agents join the same review through an MCP server: they read what humans read, leave threads humans approve, and (with explicit human sign-off) apply the resolved feedback as a new revision.
 
-Unlike Google Docs, edits happen on the actual markdown — so the file in your repo stays the source of truth and the round-trip back to GitHub i
+Unlike Google Docs, edits happen on the actual markdown — so the file in your repo stays the source of truth and the round-trip back to GitHub 
 
 Live: **[https://mumd.metavert.io](https://mumd.metavert.io)****</https:>**
 
